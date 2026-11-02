@@ -1,0 +1,140 @@
+{
+  "name": "BIAI - 48h Lead Follow-Up SLA Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "hourly-cron-trigger",
+      "name": "Hourly Schedule SLA Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT l.id, l.contact_name, l.source_channel, l.programme_interest, l.last_interaction_at, l.pipeline_status, l.phone FROM leads l WHERE l.pipeline_status IN ('New', 'Interested') AND l.last_interaction_at < (NOW() - INTERVAL '48 HOURS') AND NOT EXISTS (SELECT 1 FROM follow_up_tasks t WHERE t.lead_id = l.id AND t.status = 'pending');"
+      },
+      "id": "query-overdue-leads",
+      "name": "Query Leads Exceeding 48h SLA",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [440, 300],
+      "credentials": {
+        "postgres": {
+          "id": "supabase_postgres_credentials",
+          "name": "Supabase PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $input.all().length }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "check-leads-found",
+      "name": "Any Overdue Leads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO follow_up_tasks (id, lead_id, title, description, due_at, status, created_at) VALUES ('task_sla_' || gen_random_uuid(), '{{ $json.id }}', '48h SLA Alert: Follow up with {{ $json.contact_name }}', 'Lead has remained unattended for >48 hours since incoming enquiry on {{ $json.source_channel }}.', NOW(), 'pending', NOW()) RETURNING id;"
+      },
+      "id": "create-sla-task",
+      "name": "Create Overdue Task",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [880, 240],
+      "credentials": {
+        "postgres": {
+          "id": "supabase_postgres_credentials",
+          "name": "Supabase PostgreSQL Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO activity_logs (id, lead_id, event_type, description, created_at, created_by) VALUES ('log_' || gen_random_uuid(), '{{ $json.id }}', 'followup_created', 'Automated 48-hour SLA overdue reminder generated for {{ $json.contact_name }}', NOW(), 'n8n_sla_cron');"
+      },
+      "id": "log-sla-event",
+      "name": "Log Activity Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1100, 240],
+      "credentials": {
+        "postgres": {
+          "id": "supabase_postgres_credentials",
+          "name": "Supabase PostgreSQL Database"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Hourly Schedule SLA Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query Leads Exceeding 48h SLA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Leads Exceeding 48h SLA": {
+      "main": [
+        [
+          {
+            "node": "Any Overdue Leads?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Overdue Leads?": {
+      "main": [
+        [
+          {
+            "node": "Create Overdue Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Overdue Task": {
+      "main": [
+        [
+          {
+            "node": "Log Activity Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

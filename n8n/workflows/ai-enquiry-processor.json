@@ -1,0 +1,192 @@
+{
+  "name": "BIAI - AI Enquiry Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "process-enquiry",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Inbound Enquiry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [220, 300],
+      "webhookId": "biai-enquiry-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.body.message }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "validate-input",
+      "name": "Validate Request Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "raw_message",
+              "value": "={{ $json.body.message }}"
+            },
+            {
+              "name": "channel",
+              "value": "={{ $json.body.channel || 'Website form' }}"
+            },
+            {
+              "name": "sender_name",
+              "value": "={{ $json.body.sender_name || null }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $json.body.phone || null }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalize-input",
+      "name": "Normalize Input Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [660, 240]
+    },
+    {
+      "parameters": {
+        "model": "gemini-1.5-flash",
+        "options": {
+          "temperature": 0.2
+        },
+        "prompt": "=You are the AI Enquiry Processor for BIAI (Bangladesh Institute of Artificial Intelligence).\nAnalyze this inbound message:\n\nChannel: {{ $json.channel }}\nName provided: {{ $json.sender_name }}\nPhone provided: {{ $json.phone }}\nMessage: \"{{ $json.raw_message }}\"\n\nRules:\n1. Extract language: bangla, banglish, english, or mixed.\n2. Category: sales_enquiry, programme_info, corporate_training, payment_support, refund_cancellation, general_support, job_application, spam, other.\n3. Programme interest: bootcamp, fellowship, corporate_training, unknown.\n4. Never invent missing names, phones, prices, refund policies, or job guarantees.\n5. Draft a polite reply matching the sender's language.\n6. Return strict JSON matching the schema.",
+        "jsonOutput": true
+      },
+      "id": "call-gemini",
+      "name": "Gemini Multilingual Analysis",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.4,
+      "position": [880, 240],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "gemini_credentials",
+          "name": "Google Gemini API Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate JSON output structure\nconst item = $input.item.json;\nlet parsed = {};\ntry {\n  parsed = typeof item.text === 'string' ? JSON.parse(item.text) : item;\n} catch (e) {\n  parsed = item;\n}\n\nreturn {\n  sender_name: parsed.sender_name || null,\n  phone: parsed.phone || null,\n  language: parsed.language || 'english',\n  category: parsed.category || 'other',\n  programme_interest: parsed.programme_interest || 'unknown',\n  intent: parsed.intent || 'General inquiry',\n  priority: parsed.priority || 'medium',\n  sentiment: parsed.sentiment || 'neutral',\n  confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,\n  key_details: Array.isArray(parsed.key_details) ? parsed.key_details : [],\n  requested_follow_up: parsed.requested_follow_up || null,\n  requires_human_review: Boolean(parsed.requires_human_review),\n  review_reason: parsed.review_reason || null,\n  suggested_reply: parsed.suggested_reply || 'Thank you for reaching out to BIAI. Our team will get back to you shortly.',\n  processed_at: new Date().toISOString()\n};"
+      },
+      "id": "validate-schema",
+      "name": "Validate Structured Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 240]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-success",
+      "name": "Return Structured Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1320, 240]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"error\": \"Invalid request payload: message content is required.\"}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-error",
+      "name": "Return Bad Request",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [660, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Inbound Enquiry": {
+      "main": [
+        [
+          {
+            "node": "Validate Request Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request Payload": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Bad Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input Fields": {
+      "main": [
+        [
+          {
+            "node": "Gemini Multilingual Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Multilingual Analysis": {
+      "main": [
+        [
+          {
+            "node": "Validate Structured Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Structured Output": {
+      "main": [
+        [
+          {
+            "node": "Return Structured Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
