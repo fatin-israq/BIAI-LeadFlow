@@ -65,3 +65,4 @@ describe('Follow-up 48h SLA & Pipeline Transitions', () => {
     expect(updatedTask?.completed_at).not.toBeNull();
   });
 });
+

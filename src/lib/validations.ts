@@ -62,3 +62,4 @@ export const intakeInputSchema = z.object({
 
 export type IntakeInput = z.infer<typeof intakeInputSchema>;
 export type ValidatedAIExtraction = z.infer<typeof aiExtractionSchema>;
+

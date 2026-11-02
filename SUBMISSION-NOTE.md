@@ -45,3 +45,4 @@ Key capabilities include:
 2. **Official Meta Graph API & WhatsApp Cloud API Webhooks**: Directly ingest incoming WhatsApp messages and Facebook Messenger comments via verified webhooks in real time.
 3. **AI Voice Note Transcription**: Add Whisper / Gemini Audio transcription for WhatsApp voice notes (common among prospective Bangladeshi students).
 4. **Automated Weekly AI Management Summary**: Implement an automated weekly digest summarizing lead conversion rates, channel performance, and common customer objections.
+

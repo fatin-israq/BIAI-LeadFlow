@@ -14,3 +14,4 @@ export const supabase: SupabaseClient | null =
     : null;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+

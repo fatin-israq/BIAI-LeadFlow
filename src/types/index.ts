@@ -148,3 +148,19 @@ export interface DashboardMetrics {
   volumeOverTime: { date: string; enquiries: number; leads: number }[];
   urgentSupportCount: number;
 }
+
+export interface AIWeeklySummary {
+  headline: string;
+  period: string;
+  executive_summary: string;
+  highlights: string[];
+  corporate_pipeline: {
+    total_potential_seats: number;
+    deals: { name: string; company: string; seats: number; priority: string }[];
+  };
+  critical_attention_items: string[];
+  action_plan: string[];
+  generated_at: string;
+}
+
+

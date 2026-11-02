@@ -39,10 +39,13 @@ import {
   isOverdue48Hours,
 } from '../lib/utils';
 import { EnquiryDetailModal } from '../components/enquiries/EnquiryDetailModal';
+import { WeeklySummaryCard } from '../components/dashboard/WeeklySummaryCard';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [allEnquiries, setAllEnquiries] = useState<Enquiry[]>([]);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [recentEnquiries, setRecentEnquiries] = useState<Enquiry[]>([]);
   const [urgentEnquiries, setUrgentEnquiries] = useState<Enquiry[]>([]);
   const [selectedEnquiry, setSelectedEnquiry] = useState<Enquiry | null>(null);
@@ -56,10 +59,14 @@ export const DashboardPage: React.FC = () => {
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      const m = await storage.getDashboardMetrics();
+      const [m, all, leads] = await Promise.all([
+        storage.getDashboardMetrics(),
+        storage.getEnquiries(),
+        storage.getLeads(),
+      ]);
       setMetrics(m);
-
-      const all = await storage.getEnquiries();
+      setAllEnquiries(all);
+      setAllLeads(leads);
       setRecentEnquiries(all.slice(0, 7));
 
       const urgent = all.filter(
@@ -181,6 +188,13 @@ export const DashboardPage: React.FC = () => {
           <span className="text-[10px] text-rose-500 font-semibold block">SLA action required</span>
         </div>
       </div>
+
+      {/* AI Weekly Executive Summary Digest */}
+      <WeeklySummaryCard
+        metrics={metrics}
+        enquiries={allEnquiries}
+        leads={allLeads}
+      />
 
       {/* Visual Analytics Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -492,3 +506,4 @@ export const DashboardPage: React.FC = () => {
     </div>
   );
 };
+

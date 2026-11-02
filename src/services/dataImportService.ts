@@ -256,3 +256,4 @@ export function parseCSVEnquiries(csvContent: string): any[] {
 
   return parsed.data;
 }
+

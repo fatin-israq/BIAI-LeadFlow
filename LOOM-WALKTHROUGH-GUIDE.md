@@ -67,3 +67,4 @@
   - Show the exported n8n workflows (`ai-enquiry-processor.json` and `follow-up-reminders.json`).
   - Explain next steps: Adding a RAG vector database for official syllabus documents and direct Meta Graph API webhook ingestion.
   - Close with: *"Thank you! I look forward to our discussion and demonstrating the live system."*
+

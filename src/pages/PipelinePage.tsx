@@ -285,3 +285,4 @@ export const PipelinePage: React.FC = () => {
     </div>
   );
 };
+

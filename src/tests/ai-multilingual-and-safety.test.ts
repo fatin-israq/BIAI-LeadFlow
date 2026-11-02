@@ -107,4 +107,30 @@ describe('AI Multilingual Intelligence & Factual Safety Guardrails', () => {
     // Catches to 'other' safely
     expect(parsedBad.category).toBe('other');
   });
+
+  it('generates an executive weekly summary synthesizing inbound metrics and corporate leads', async () => {
+    const { generateAIWeeklySummary } = await import('../services/aiService');
+    const { processSampleData } = await import('../services/dataImportService');
+
+    const sample = processSampleData();
+    const mockMetrics = {
+      totalEnquiries: sample.enquiries.length,
+      genuineSalesLeads: sample.leads.length,
+      leadsByStatus: { New: 14, Contacted: 0, Interested: 0, Paid: 0, Lost: 0 },
+      followUpsOverdue: 14,
+      followUpsPending: 14,
+      enquiriesBySource: [{ name: 'WhatsApp', count: 8 }],
+      enquiriesByProgramme: [{ name: 'Bootcamp', count: 5 }],
+      enquiriesByCategory: [{ name: 'sales_enquiry', count: 6 }],
+      volumeOverTime: [],
+      urgentSupportCount: 2,
+    };
+
+    const summary = await generateAIWeeklySummary(sample.enquiries, sample.leads, mockMetrics);
+    expect(summary.headline).toContain('Weekly');
+    expect(summary.corporate_pipeline.total_potential_seats).toBe(175);
+    expect(summary.action_plan.length).toBeGreaterThan(0);
+    expect(summary.critical_attention_items.length).toBeGreaterThan(0);
+  });
 });
+

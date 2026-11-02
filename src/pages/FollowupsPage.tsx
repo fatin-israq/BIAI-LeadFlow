@@ -390,3 +390,4 @@ export const FollowupsPage: React.FC = () => {
     </div>
   );
 };
+

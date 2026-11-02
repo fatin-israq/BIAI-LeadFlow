@@ -172,3 +172,4 @@ export function getPipelineStatusColor(status: PipelineStatus): {
       return { bg: 'bg-slate-100', border: 'border-slate-300', text: 'text-slate-600', dot: 'bg-slate-400' };
   }
 }
+

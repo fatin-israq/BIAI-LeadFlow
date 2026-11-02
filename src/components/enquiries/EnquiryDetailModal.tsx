@@ -252,3 +252,4 @@ export const EnquiryDetailModal: React.FC<EnquiryDetailModalProps> = ({
     </Modal>
   );
 };
+

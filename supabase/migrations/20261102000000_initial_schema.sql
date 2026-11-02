@@ -112,3 +112,4 @@ CREATE POLICY "Allow authenticated write tasks" ON public.follow_up_tasks FOR AL
 
 CREATE POLICY "Allow authenticated read logs" ON public.activity_logs FOR SELECT TO authenticated USING (true);
 CREATE POLICY "Allow authenticated write logs" ON public.activity_logs FOR ALL TO authenticated USING (true);
+
