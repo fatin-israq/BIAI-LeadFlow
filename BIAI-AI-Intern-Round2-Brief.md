@@ -38,22 +38,25 @@ If we shortlist you, we will have a 20-minute call where you show us your work a
 
 ---
 
-## Task 2: BIAI Staff Platform (small version)
+## Task 2: Corporate Leads Pipeline
 
-**The problem.** BIAI's small team needs one simple place for attendance, leave and tasks. Think of a much smaller version of a staff tool like Nimbus Time2Work.
+**The problem.** BIAI sells training to companies. Right now, leads sit in messages and spreadsheets. Some have no owner, some follow-ups are overdue, and nobody can see which deal is stuck.
 
-**Build a small app with:**
+**Build a simple pipeline app that:**
 
-1. Staff check-in and check-out.
-2. Leave requests that a manager approves or rejects.
-3. A simple task board.
-4. An AI assistant that answers questions from the app's data, for example "Who is on leave this week?" or "Summarise my team's open tasks."
+1. Shows each company lead with its contact, industry, deal value and stage.
+2. Uses the five stages in order: New, Contacted, Meeting, Proposal, Invoice sent. Plus two end stages: Paid and Lost.
+3. Highlights overdue follow-ups, and flags data problems (missing contact details, duplicate companies, dates in the wrong order).
+4. Uses AI to draft a short, polite follow-up email in English for any lead you pick, using that lead's notes.
+5. Lets a user ask questions in plain language, for example "Which deals are overdue?" or "What is the total value in Proposal stage?"
 
-**We send you:** a sample staff list and one month of sample attendance and task data.
+**We send you:** 25 sample corporate leads (in a CSV file) and a one-page list of the stage definitions. All companies and people are fictional. The data has mistakes on purpose, so clean it up as you build.
 
-**Keep it small:** 3 to 5 screens is enough. We care about how well it works and how it uses AI, not how big it is.
+**Keep it small:** 3 to 5 screens is enough. We care about how clear the pipeline is and how well the AI helps, not how big the app is.
 
-**Extra (optional):** a monthly attendance report written by AI, and separate screens for staff and managers.
+**Extra (optional):** a weekly summary of which deals to chase first, written by AI, and a way to export the pipeline to a spreadsheet.
+
+**Show us:** how many of the 25 leads you flagged correctly, and how your app handles the duplicates and the date error.
 
 ---
 
