@@ -61,43 +61,59 @@ export default async function handler(request: Request): Promise<Response> {
 
     const { message, channel, sender_name, phone } = parseResult.data;
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const GEMINI_MODEL = process.env.GEMINI_MODEL;
+    const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
     const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
     const N8N_SHARED_SECRET = process.env.N8N_SHARED_SECRET;
 
+    // Check for obvious localhost misconfiguration on cloud Vercel
+    if (N8N_WEBHOOK_URL && (N8N_WEBHOOK_URL.includes('localhost') || N8N_WEBHOOK_URL.includes('127.0.0.1'))) {
+      console.warn(
+        `[Vercel API] ⚠️ N8N_WEBHOOK_URL is set to localhost (${N8N_WEBHOOK_URL}). ` +
+        `Vercel runs in the cloud and cannot reach your computer's localhost. ` +
+        `Please use a public tunnel (e.g. cloudflared, ngrok, or localtunnel) or cloud n8n URL.`
+      );
+    }
+
     // OPTION 1: n8n Webhook Integration
     if (N8N_WEBHOOK_URL) {
-      const n8nResponse = await fetch(N8N_WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-N8N-Shared-Secret': N8N_SHARED_SECRET || '',
-        },
-        body: JSON.stringify({
-          message,
-          channel,
-          sender_name,
-          phone,
-          received_at: new Date().toISOString(),
-        }),
-      });
+      try {
+        console.log(`[Vercel API] 🔄 Forwarding enquiry to n8n webhook: ${N8N_WEBHOOK_URL}`);
+        const n8nResponse = await fetch(N8N_WEBHOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-N8N-Shared-Secret': N8N_SHARED_SECRET || '',
+          },
+          body: JSON.stringify({
+            message,
+            channel,
+            sender_name,
+            phone,
+            received_at: new Date().toISOString(),
+          }),
+        });
 
-      if (!n8nResponse.ok) {
-        throw new Error(`n8n webhook error: ${n8nResponse.statusText}`);
+        if (n8nResponse.ok) {
+          const n8nJson = await n8nResponse.json();
+          const validated = aiExtractionSchema.parse(n8nJson);
+          console.log('[Vercel API] ✅ Successfully processed enquiry via n8n!');
+          return new Response(JSON.stringify(validated), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        } else {
+          const errBody = await n8nResponse.text();
+          console.warn(`[Vercel API] ⚠️ n8n webhook returned HTTP ${n8nResponse.status}: ${errBody}`);
+        }
+      } catch (n8nErr: any) {
+        console.warn(`[Vercel API] ⚠️ Failed to reach n8n webhook (${n8nErr.message}). Falling back to Gemini/Local.`);
       }
-
-      const n8nJson = await n8nResponse.json();
-      const validated = aiExtractionSchema.parse(n8nJson);
-      return new Response(JSON.stringify(validated), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
     }
 
     // OPTION 2: Direct Gemini Flash Server-Side Processing
     if (GEMINI_API_KEY) {
-      const model = GEMINI_MODEL || 'gemini-1.5-flash';
-      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+      console.log(`[Vercel API] 🤖 Calling Gemini (${GEMINI_MODEL}) directly...`);
+      const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
       const systemPrompt = `
 You are the AI Enquiry Assistant for BIAI (Bangladesh Institute of Artificial Intelligence).
@@ -136,7 +152,8 @@ Incoming Message:
       });
 
       if (!geminiRes.ok) {
-        throw new Error(`Gemini API error: ${geminiRes.statusText}`);
+        const errorText = await geminiRes.text();
+        throw new Error(`Gemini API error (${geminiRes.status}): ${errorText}`);
       }
 
       const geminiData = await geminiRes.json();
@@ -156,7 +173,7 @@ Incoming Message:
 
     return new Response(
       JSON.stringify({
-        error: 'Neither N8N_WEBHOOK_URL nor GEMINI_API_KEY configured on server.',
+        error: 'Neither reachable N8N_WEBHOOK_URL nor GEMINI_API_KEY configured on server.',
         fallback_required: true,
       }),
       {
@@ -165,6 +182,7 @@ Incoming Message:
       }
     );
   } catch (err: any) {
+    console.error('[Vercel API] ❌ Internal error:', err);
     return new Response(
       JSON.stringify({
         error: err.message || 'Internal processing error',
@@ -177,3 +195,4 @@ Incoming Message:
   }
 }
 
+export { handler as POST };

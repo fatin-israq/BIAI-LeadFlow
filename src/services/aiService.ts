@@ -303,6 +303,9 @@ export async function processEnquiryWithAI(input: IntakeInput): Promise<AIExtrac
         } else {
           console.warn('AI response did not match schema:', parsed.error);
         }
+      } else {
+        const errText = await response.text();
+        console.warn(`AI endpoint returned HTTP ${response.status}:`, errText);
       }
     } catch (err) {
       console.info('Backend AI proxy unreachable, using local multilingual engine:', err);
