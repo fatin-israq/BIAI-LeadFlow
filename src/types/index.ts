@@ -161,6 +161,7 @@ export interface AIWeeklySummary {
   critical_attention_items: string[];
   action_plan: string[];
   generated_at: string;
+  is_mock?: boolean;
 }
 
 

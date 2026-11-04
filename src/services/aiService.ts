@@ -10,7 +10,7 @@ import {
   AIWeeklySummary,
   DashboardMetrics,
 } from '../types';
-import { aiExtractionSchema, IntakeInput } from '../lib/validations';
+import { aiExtractionSchema, aiWeeklySummarySchema, IntakeInput } from '../lib/validations';
 import { isOverdue48Hours } from '../lib/utils';
 
 export const AI_SYSTEM_PROMPT = `
@@ -316,70 +316,342 @@ export async function processEnquiryWithAI(input: IntakeInput): Promise<AIExtrac
   return simulateAIExtraction(input);
 }
 
+function formatDateShort(date: Date): string {
+  const d = date.getDate();
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const m = monthNames[date.getMonth()];
+  const y = date.getFullYear();
+  return `${d} ${m} ${y}`;
+}
+
 /**
- * Generates an Executive AI Weekly Summary synthesizing enquiry volume,
- * corporate pipeline opportunities, 48h SLA follow-up risks, and critical support alerts.
+ * Filters enquiries and leads to the target weekly cycle.
+ * First checks real calendar last 7 days. If no records exist in that window
+ * (e.g., when viewing seeded historical baseline records), automatically selects
+ * the most recent 7-day intake window based on the latest enquiry timestamp.
+ */
+export function getWeeklyEnquiriesAndLeads(enquiries: Enquiry[], leads: Lead[]) {
+  if (enquiries.length === 0) {
+    return {
+      periodLabel: 'No enquiries recorded',
+      weeklyEnquiries: [] as Enquiry[],
+      weeklyLeads: [] as Lead[],
+    };
+  }
+
+  const now = new Date();
+  const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  // Check if enquiries exist in the current calendar last 7 days
+  let filteredEnquiries = enquiries.filter((e) => new Date(e.received_at) >= oneWeekAgo);
+  let periodLabel = `${formatDateShort(oneWeekAgo)} – ${formatDateShort(now)}`;
+
+  // If no calendar enquiries exist (historical sample data or test mode),
+  // select the 7-day window ending at the latest enquiry date
+  if (filteredEnquiries.length === 0) {
+    const sortedEnquiries = [...enquiries].sort(
+      (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime()
+    );
+    const latestDate = new Date(sortedEnquiries[0].received_at);
+    const cycleStartDate = new Date(latestDate.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    filteredEnquiries = enquiries.filter(
+      (e) => new Date(e.received_at) >= cycleStartDate && new Date(e.received_at) <= latestDate
+    );
+    periodLabel = `${formatDateShort(cycleStartDate)} – ${formatDateShort(latestDate)}`;
+  }
+
+  const enquiryIds = new Set(filteredEnquiries.map((e) => e.id));
+  const weeklyLeads = leads.filter(
+    (l) =>
+      l.enquiry_ids.some((id) => enquiryIds.has(id)) ||
+      filteredEnquiries.some((e) => e.normalized_phone && e.normalized_phone === l.normalized_phone)
+  );
+
+  return {
+    periodLabel,
+    weeklyEnquiries: filteredEnquiries,
+    weeklyLeads,
+  };
+}
+
+/**
+ * Dynamically extracts potential student/staff seats from inquiry text or internal notes.
+ */
+export function extractPotentialSeats(text: string, notes?: string | null): number {
+  const combined = `${text} ${notes || ''}`;
+  const match = combined.match(/(\d+)\s*(?:person|people|employees?|staff|learners?|participants?|team members?|members?|seats?)/i);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num) && num > 0) return num;
+  }
+  const matchTeamOf = combined.match(/team of\s*(\d+)/i);
+  if (matchTeamOf) {
+    const num = parseInt(matchTeamOf[1], 10);
+    if (!isNaN(num) && num > 0) return num;
+  }
+  return 20; // default estimated cohort size for corporate inquiries if no count specified
+}
+
+/**
+ * High-fidelity client-side simulation for weekly summary synthesis.
+ * Dynamically parses real database records, calculating corporate pipeline deals,
+ * actual critical escalations (refunds/bKash disputes), and real 48-hour SLA breaches.
+ */
+export function simulateAIWeeklySummary(
+  weeklyEnquiries: Enquiry[],
+  weeklyLeads: Lead[],
+  metrics: DashboardMetrics,
+  periodLabel: string
+): AIWeeklySummary {
+  // 1. Extract Corporate B2B Pipeline Deals
+  const corporateLeads = weeklyLeads.filter((l) => l.programme_interest === 'corporate_training');
+  const corporateEnquiries = weeklyEnquiries.filter((e) => e.category === 'corporate_training');
+
+  const deals: { name: string; company: string; seats: number; priority: string }[] = [];
+  const handledEnquiryIds = new Set<string>();
+
+  for (const lead of corporateLeads) {
+    const relatedEnquiry = weeklyEnquiries.find((e) => lead.enquiry_ids.includes(e.id));
+    const msg = relatedEnquiry?.original_message || '';
+    const seats = extractPotentialSeats(msg, lead.notes);
+    deals.push({
+      name: lead.contact_name,
+      company: lead.company_name || 'Corporate Enterprise',
+      seats,
+      priority: lead.priority === 'high' ? 'High' : lead.priority === 'medium' ? 'Medium' : 'Low',
+    });
+    for (const eid of lead.enquiry_ids) {
+      handledEnquiryIds.add(eid);
+    }
+  }
+
+  // Also include any corporate enquiry that hasn't been linked to a Lead yet
+  for (const enq of corporateEnquiries) {
+    if (!handledEnquiryIds.has(enq.id)) {
+      const seats = extractPotentialSeats(enq.original_message, enq.internal_notes);
+      deals.push({
+        name: enq.sender_name || 'Enterprise Inquirer',
+        company: enq.internal_notes || 'Corporate Client',
+        seats,
+        priority: enq.priority === 'high' ? 'High' : 'Medium',
+      });
+      handledEnquiryIds.add(enq.id);
+    }
+  }
+
+  const totalSeats = deals.reduce((acc, d) => acc + d.seats, 0);
+
+  // 2. Overdue Leads
+  const overdueLeads = weeklyLeads.filter((l) => isOverdue48Hours(l.last_interaction_at));
+
+  // 3. Urgent / Escalation Enquiries
+  const urgentEnquiries = weeklyEnquiries.filter(
+    (e) =>
+      e.requires_human_review ||
+      e.category === 'refund_cancellation' ||
+      e.category === 'payment_support' ||
+      e.priority === 'high'
+  );
+
+  const criticalAttention: string[] = [];
+  for (const enq of urgentEnquiries) {
+    const sender = enq.sender_name || 'Customer';
+    const channel = enq.source_channel;
+    if (enq.category === 'refund_cancellation') {
+      criticalAttention.push(
+        `Urgent Escalation: ${sender} (${channel}) requested refund/cancellation. Requires senior director follow-up.`
+      );
+    } else if (enq.category === 'payment_support') {
+      criticalAttention.push(
+        `Payment Verification: ${sender} (${channel}) reported an unconfirmed payment. Reconciliation required before enrollment.`
+      );
+    } else if (enq.requires_human_review) {
+      criticalAttention.push(
+        `Review Flagged: ${sender} (${channel}) - ${enq.internal_notes || 'Flagged for human triage.'}`
+      );
+    }
+  }
+
+  if (overdueLeads.length > 0) {
+    criticalAttention.push(
+      `SLA Compliance: ${overdueLeads.length} qualified leads have breached the 48-hour contact window. Outreach response times must be stabilized.`
+    );
+  }
+
+  // 4. Highlights
+  const channelBreakdown = metrics.enquiriesBySource
+    .filter((s) => s.count > 0)
+    .map((s) => `${s.name}: ${s.count}`)
+    .join(', ');
+
+  const highlights = [
+    `Captured ${weeklyEnquiries.length} multi-channel enquiries (${channelBreakdown || 'All active channels'})`,
+    `Identified ${weeklyLeads.length} qualified sales leads (${Math.round((weeklyLeads.length / Math.max(weeklyEnquiries.length, 1)) * 100)}% qualification rate)`,
+  ];
+
+  if (deals.length > 0) {
+    highlights.push(
+      `Strong corporate B2B training interest across ${deals.length} organizations representing ~${totalSeats} learners`
+    );
+  }
+
+  const spamOrJobCount = weeklyEnquiries.filter(
+    (e) => e.category === 'spam' || e.category === 'job_application'
+  ).length;
+  if (spamOrJobCount > 0) {
+    highlights.push(`Safely isolated ${spamOrJobCount} non-sales inquiries (spam/job applications) from the sales pipeline`);
+  }
+
+  // 5. Action Plan
+  const actionPlan: string[] = [];
+  if (deals.length > 0) {
+    const topDealNames = deals.slice(0, 2).map((d) => d.name).join(' and ');
+    actionPlan.push(
+      `1. Prioritize immediate phone outreach to ${topDealNames} with tailored B2B AI syllabus proposals.`
+    );
+  } else {
+    actionPlan.push('1. Launch targeted outreach for prospective corporate AI training partners.');
+  }
+
+  const paymentIssue = urgentEnquiries.find((e) => e.category === 'payment_support');
+  if (paymentIssue) {
+    actionPlan.push(
+      `2. Finance team must reconcile ${paymentIssue.sender_name || 'student'}'s payment and dispatch official admission confirmation.`
+    );
+  } else {
+    actionPlan.push('2. Reconcile pending bKash/Nagad transactions with admissions ledger.');
+  }
+
+  const refundIssue = urgentEnquiries.find((e) => e.category === 'refund_cancellation');
+  if (refundIssue) {
+    actionPlan.push(
+      `3. Operations lead must contact ${refundIssue.sender_name || 'customer'} with an empathetic resolution to de-escalate public brand risk.`
+    );
+  } else {
+    actionPlan.push('3. Conduct proactive quality follow-up on escalated customer requests.');
+  }
+
+  if (overdueLeads.length > 0) {
+    actionPlan.push(
+      `4. Clear the ${overdueLeads.length} overdue lead follow-up backlog using the AI suggested replies in Banglish/Bangla.`
+    );
+  } else {
+    actionPlan.push('4. Maintain rapid first-response time across WhatsApp, Messenger, and Website inquiries.');
+  }
+
+  // 6. Executive Paragraph
+  const execSummary = `This week (${periodLabel}), BIAI received ${weeklyEnquiries.length} inbound enquiries across 5 multi-channels. The AI intake engine successfully filtered non-sales noise (isolating spam and job applications) and identified ${weeklyLeads.length} high-intent prospective learners and B2B clients.${deals.length > 0 ? ` Notable high-value interest was captured in Corporate AI Training (${deals.length} organizations representing ~${totalSeats} learners).` : ''}${overdueLeads.length > 0 ? ` ${overdueLeads.length} leads have breached the 48-hour response SLA and require immediate outreach.` : ''}`;
+
+  return {
+    headline: 'BIAI Weekly Inbound Intelligence & Pipeline Brief',
+    period: periodLabel,
+    executive_summary: execSummary,
+    highlights,
+    corporate_pipeline: {
+      total_potential_seats: totalSeats,
+      deals,
+    },
+    critical_attention_items: criticalAttention,
+    action_plan: actionPlan,
+    generated_at: new Date().toISOString(),
+    is_mock: true,
+  };
+}
+
+/**
+ * Main AI Weekly Summary Generator
+ * Connects to Gemini API endpoint `/api/ai/generate-summary` to synthesize real enquiries
+ * and leads from the past week, falling back smoothly to the dynamic local engine if offline.
  */
 export async function generateAIWeeklySummary(
   enquiries: Enquiry[],
   leads: Lead[],
   metrics: DashboardMetrics
 ): Promise<AIWeeklySummary> {
-  const corporateLeads = leads.filter((l) => l.programme_interest === 'corporate_training');
-  const overdueLeads = leads.filter((l) => isOverdue48Hours(l.last_interaction_at));
-  const urgentIssues = enquiries.filter(
-    (e) =>
-      e.requires_human_review ||
-      e.category === 'refund_cancellation' ||
-      e.category === 'payment_support'
-  );
+  const { periodLabel, weeklyEnquiries, weeklyLeads } = getWeeklyEnquiriesAndLeads(enquiries, leads);
 
-  return {
-    headline: 'BIAI Weekly Inbound Intelligence & Pipeline Brief',
-    period: 'Current Intake Cycle (26–27 Oct Historical Baseline)',
-    executive_summary: `This week, BIAI received ${metrics.totalEnquiries} inbound enquiries across 5 multi-channels. The AI intake engine successfully filtered non-sales noise (isolating spam and job applications) and identified ${metrics.genuineSalesLeads} high-intent prospective learners and B2B clients. Notable high-value interest was captured in Corporate AI Training (3 organizations representing ~175 learners), while ${overdueLeads.length} leads have breached the 48-hour response SLA and require immediate outreach.`,
-    highlights: [
-      `Captured ${metrics.totalEnquiries} multi-channel enquiries (${metrics.enquiriesBySource.map((s) => `${s.name}: ${s.count}`).join(', ')})`,
-      `Identified ${metrics.genuineSalesLeads} qualified sales leads (70% conversion qualification rate)`,
-      `Strong corporate B2B training interest across 3 key sectors (Textiles, Banking, and Manufacturing)`,
-      `Safely isolated 1 spam cryptocurrency solicitation and 1 internship job application from the CRM sales pipeline`,
-    ],
-    corporate_pipeline: {
-      total_potential_seats: 175,
-      deals: [
-        {
-          name: 'Kamrul Islam',
-          company: 'Motijheel Bank (120 employees)',
-          seats: 120,
-          priority: 'High',
-        },
-        {
-          name: 'Mahmud Hasan',
-          company: 'Gazipur Textile Company (40 employees)',
-          seats: 40,
-          priority: 'High',
-        },
-        {
-          name: 'Rezaul Karim',
-          company: 'Garment Factory SME (15 employees)',
-          seats: 15,
-          priority: 'Medium',
-        },
-      ],
-    },
-    critical_attention_items: [
-      'Urgent Escalation: Habibur Rahman (Phone note) demanded immediate refund and threatened social media post. Needs director call today.',
-      'Payment Verification: Farzana Rahman (WhatsApp) reported an unconfirmed bKash transfer from Oct 25. Requires TrxID verification before enrollment.',
-      `SLA Compliance: ${overdueLeads.length} qualified leads are past the 48-hour contact window. Outreach response times must be stabilized.`,
-    ],
-    action_plan: [
-      '1. Prioritize immediate phone outreach to Kamrul Islam (Bank) and Mahmud Hasan (Textile) with tailored B2B AI syllabus proposals.',
-      '2. Finance team must reconcile Farzana Rahman\'s bKash payment and dispatch official admission confirmation.',
-      '3. Operations lead must contact Habibur Rahman with an empathetic resolution to de-escalate public brand risk.',
-      '4. Clear the 14 overdue lead follow-up backlog using the AI suggested replies in Banglish/Bangla.',
-    ],
-    generated_at: new Date().toISOString(),
-  };
+  const isBrowser = typeof window !== 'undefined';
+  const forceDemo =
+    !isBrowser ||
+    (typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true')) ||
+    (typeof import.meta !== 'undefined' && (import.meta.env?.MODE === 'test' || import.meta.env?.VITE_DEMO_MODE === 'true'));
+
+  if (!forceDemo) {
+    try {
+      const payload = {
+        period: periodLabel,
+        total_enquiries: weeklyEnquiries.length,
+        enquiries_by_channel: metrics.enquiriesBySource,
+        genuine_sales_leads: weeklyLeads.length,
+        corporate_leads: weeklyLeads
+          .filter((l) => l.programme_interest === 'corporate_training')
+          .map((l) => {
+            const enq = weeklyEnquiries.find((e) => l.enquiry_ids.includes(e.id));
+            return {
+              name: l.contact_name,
+              company: l.company_name || 'Corporate Enterprise',
+              notes: l.notes,
+              message: enq?.original_message || '',
+              seats: extractPotentialSeats(enq?.original_message || '', l.notes),
+              priority: l.priority,
+            };
+          }),
+        urgent_issues: weeklyEnquiries
+          .filter(
+            (e) =>
+              e.requires_human_review ||
+              e.category === 'refund_cancellation' ||
+              e.category === 'payment_support'
+          )
+          .map((e) => ({
+            sender_name: e.sender_name,
+            channel: e.source_channel,
+            category: e.category,
+            message: e.original_message,
+            notes: e.internal_notes,
+          })),
+        overdue_leads: weeklyLeads
+          .filter((l) => isOverdue48Hours(l.last_interaction_at))
+          .map((l) => ({
+            contact_name: l.contact_name,
+            company: l.company_name,
+            last_interaction_at: l.last_interaction_at,
+          })),
+        enquiries_sample: weeklyEnquiries.slice(0, 15).map((e) => ({
+          sender: e.sender_name,
+          channel: e.source_channel,
+          category: e.category,
+          intent: e.original_message.substring(0, 120),
+          language: e.detected_language,
+        })),
+      };
+
+      const response = await fetch('/api/ai/generate-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const json = await response.json();
+        const parsed = aiWeeklySummarySchema.safeParse(json);
+        if (parsed.success) {
+          return { ...parsed.data, is_mock: false };
+        } else {
+          console.warn('AI summary response did not match schema:', parsed.error);
+        }
+      } else {
+        const errText = await response.text();
+        console.warn(`AI summary endpoint returned HTTP ${response.status}:`, errText);
+      }
+    } catch (err) {
+      console.info('Summary AI endpoint unreachable, using dynamic local synthesis:', err);
+    }
+  }
+
+  // Dynamic simulation using actual weekly enquiries and leads from database
+  return simulateAIWeeklySummary(weeklyEnquiries, weeklyLeads, metrics, periodLabel);
 }
 
 

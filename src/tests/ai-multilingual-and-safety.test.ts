@@ -132,5 +132,95 @@ describe('AI Multilingual Intelligence & Factual Safety Guardrails', () => {
     expect(summary.action_plan.length).toBeGreaterThan(0);
     expect(summary.critical_attention_items.length).toBeGreaterThan(0);
   });
+
+  it('dynamically adapts seats, corporate deals, and escalations when database records change', async () => {
+    const { generateAIWeeklySummary } = await import('../services/aiService');
+
+    const customEnquiries: any[] = [
+      {
+        id: 'enq_custom_1',
+        sender_name: 'Tanvir Hossain',
+        phone: '01700112233',
+        source_channel: 'Website form',
+        original_message: 'We want to train a team of 65 engineers in generative AI for Beximco Tech.',
+        received_at: new Date().toISOString(),
+        detected_language: 'english',
+        category: 'corporate_training',
+        programme_interest: 'corporate_training',
+        priority: 'high',
+        sentiment: 'positive',
+        ai_confidence: 0.98,
+        ai_suggested_reply: 'Thank you Tanvir...',
+        ai_key_details: ['65 engineers', 'Beximco Tech'],
+        requires_human_review: false,
+        handling_status: 'processed',
+        internal_notes: 'Beximco Tech corporate inquiry',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      {
+        id: 'enq_custom_2',
+        sender_name: 'Nusrat Jahan',
+        phone: '01800112233',
+        source_channel: 'WhatsApp',
+        original_message: 'Amar bkash payment deduct hoyeche kintu batch confirm hoy nai, please help',
+        received_at: new Date().toISOString(),
+        detected_language: 'banglish',
+        category: 'payment_support',
+        programme_interest: 'bootcamp',
+        priority: 'high',
+        sentiment: 'neutral',
+        ai_confidence: 0.95,
+        ai_suggested_reply: 'Checking...',
+        ai_key_details: ['bKash payment issue'],
+        requires_human_review: true,
+        handling_status: 'unprocessed',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+
+    const customLeads: any[] = [
+      {
+        id: 'lead_custom_1',
+        contact_name: 'Tanvir Hossain',
+        phone: '01700112233',
+        normalized_phone: '+8801700112233',
+        company_name: 'Beximco Tech',
+        source_channel: 'Website form',
+        programme_interest: 'corporate_training',
+        pipeline_status: 'New',
+        priority: 'high',
+        notes: '65 seats enterprise cohort',
+        enquiry_ids: ['enq_custom_1'],
+        last_interaction_at: new Date().toISOString(),
+        last_contacted_at: null,
+        next_follow_up_at: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ];
+
+    const mockMetrics = {
+      totalEnquiries: 2,
+      genuineSalesLeads: 1,
+      leadsByStatus: { New: 1, Contacted: 0, Interested: 0, Paid: 0, Lost: 0 },
+      followUpsOverdue: 0,
+      followUpsPending: 1,
+      enquiriesBySource: [{ name: 'Website form', count: 1 }, { name: 'WhatsApp', count: 1 }],
+      enquiriesByProgramme: [{ name: 'corporate_training', count: 1 }],
+      enquiriesByCategory: [{ name: 'corporate_training', count: 1 }],
+      volumeOverTime: [],
+      urgentSupportCount: 1,
+    };
+
+    const summary = await generateAIWeeklySummary(customEnquiries, customLeads, mockMetrics);
+    expect(summary.corporate_pipeline.total_potential_seats).toBe(65);
+    expect(summary.corporate_pipeline.deals[0].name).toBe('Tanvir Hossain');
+    expect(summary.corporate_pipeline.deals[0].company).toBe('Beximco Tech');
+    expect(summary.critical_attention_items.some((item) => item.includes('Nusrat Jahan'))).toBe(true);
+    expect(summary.action_plan.some((act) => act.includes('Tanvir Hossain'))).toBe(true);
+    expect(summary.action_plan.some((act) => act.includes('Nusrat Jahan'))).toBe(true);
+  });
 });
 

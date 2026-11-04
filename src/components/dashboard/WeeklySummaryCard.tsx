@@ -47,8 +47,8 @@ ${summary.executive_summary}
 ## Key Highlights
 ${summary.highlights.map((h) => `- ${h}`).join('\n')}
 
-## Corporate Training Pipeline (175 seats)
-${summary.corporate_pipeline.deals.map((d) => `- ${d.name} (${d.company}) - Priority: ${d.priority}`).join('\n')}
+## Corporate Training Pipeline (${summary.corporate_pipeline.total_potential_seats} seats)
+${summary.corporate_pipeline.deals.map((d) => `- ${d.name} (${d.company}) - Priority: ${d.priority} (${d.seats} seats)`).join('\n')}
 
 ## Critical Escalations & SLA Attention
 ${summary.critical_attention_items.map((i) => `- ${i}`).join('\n')}
@@ -76,12 +76,20 @@ ${summary.action_plan.join('\n')}
               <h3 className="text-sm font-bold text-navy-900">
                 AI Weekly Executive Summary
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700">
-                AI Synthesis
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  summary?.is_mock === false
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    : 'bg-brand-100 text-brand-700'
+                }`}
+              >
+                {summary?.is_mock === false ? 'Gemini 3 Flash • Live' : 'AI Synthesis'}
               </span>
             </div>
             <p className="text-xs text-navy-500">
-              Synthesizes enquiry trends, high-value corporate deals, and 48-hour SLA risks
+              {summary
+                ? `Analyzing real enquiry trends and pipeline for: ${summary.period}`
+                : 'Synthesizes enquiry trends, high-value corporate deals, and 48-hour SLA risks from last week'}
             </p>
           </div>
         </div>
@@ -177,25 +185,49 @@ ${summary.action_plan.join('\n')}
                   Corporate B2B Demand
                 </h4>
                 <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                  175 Potential Learners
+                  {summary.corporate_pipeline.total_potential_seats} Potential Learners
                 </span>
               </div>
               <div className="space-y-1.5">
-                {summary.corporate_pipeline.deals.map((deal, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2 rounded bg-purple-50/50 border border-purple-100 flex items-center justify-between text-[11px]"
-                  >
-                    <div>
-                      <strong className="text-navy-900">{deal.name}</strong>
-                      <span className="text-navy-500 block">{deal.company}</span>
+                {summary.corporate_pipeline.deals.length === 0 ? (
+                  <p className="text-navy-400 italic text-[11px] py-2">
+                    No corporate training inquiries recorded for this period.
+                  </p>
+                ) : (
+                  summary.corporate_pipeline.deals.map((deal, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2 rounded bg-purple-50/50 border border-purple-100 flex items-center justify-between text-[11px]"
+                    >
+                      <div>
+                        <strong className="text-navy-900">{deal.name}</strong>
+                        <span className="text-navy-500 block">{deal.company}</span>
+                      </div>
+                      <span className="font-bold text-purple-700">{deal.seats} seats</span>
                     </div>
-                    <span className="font-bold text-purple-700">{deal.seats} seats</span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
+
+          {/* Critical Attention & Escalations */}
+          {summary.critical_attention_items && summary.critical_attention_items.length > 0 && (
+            <div className="p-3.5 bg-rose-50/70 rounded-lg border border-rose-200/80 space-y-2">
+              <h4 className="font-bold text-rose-900 flex items-center gap-1.5 uppercase text-[11px] tracking-wide">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                Critical Escalations & SLA Attention
+              </h4>
+              <ul className="space-y-1.5 text-[11px] text-rose-950">
+                {summary.critical_attention_items.map((item, idx) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className="text-rose-500 font-bold">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Action Recommendations */}
           <div className="p-3.5 bg-brand-50/60 rounded-lg border border-brand-200/80 space-y-2">

@@ -63,3 +63,28 @@ export const intakeInputSchema = z.object({
 export type IntakeInput = z.infer<typeof intakeInputSchema>;
 export type ValidatedAIExtraction = z.infer<typeof aiExtractionSchema>;
 
+export const aiWeeklySummarySchema = z.object({
+  headline: z.string().catch('BIAI Weekly Inbound Intelligence & Pipeline Brief'),
+  period: z.string().catch('Current Weekly Cycle'),
+  executive_summary: z.string(),
+  highlights: z.array(z.string()).catch([]),
+  corporate_pipeline: z.object({
+    total_potential_seats: z.number().catch(0),
+    deals: z.array(
+      z.object({
+        name: z.string(),
+        company: z.string(),
+        seats: z.number(),
+        priority: z.string(),
+      })
+    ).catch([]),
+  }),
+  critical_attention_items: z.array(z.string()).catch([]),
+  action_plan: z.array(z.string()).catch([]),
+  generated_at: z.string().catch(() => new Date().toISOString()),
+  is_mock: z.boolean().optional().catch(false),
+});
+
+export type ValidatedAIWeeklySummary = z.infer<typeof aiWeeklySummarySchema>;
+
+
