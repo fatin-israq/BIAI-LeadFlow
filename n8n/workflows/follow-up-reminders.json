@@ -56,7 +56,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO follow_up_tasks (id, lead_id, title, description, due_at, status, created_at) VALUES ('task_sla_' || gen_random_uuid(), '{{ $json.id }}', '48h SLA Alert: Follow up with {{ $json.contact_name }}', 'Lead has remained unattended for >48 hours since incoming enquiry on {{ $json.source_channel }}.', NOW(), 'pending', NOW()) RETURNING id;"
+        "query": "=INSERT INTO follow_up_tasks (id, lead_id, title, description, due_at, status, created_at) VALUES (gen_random_uuid(), '{{ $json.id }}', '48h SLA Alert: Follow up with {{ $json.contact_name }}', 'Lead has remained unattended for >48 hours since incoming enquiry on {{ $json.source_channel }}.', NOW(), 'pending', NOW()) RETURNING id;"
       },
       "id": "create-sla-task",
       "name": "Create Overdue Task",
@@ -73,7 +73,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=INSERT INTO activity_logs (id, lead_id, event_type, description, created_at, created_by) VALUES ('log_' || gen_random_uuid(), '{{ $json.id }}', 'followup_created', 'Automated 48-hour SLA overdue reminder generated for {{ $json.contact_name }}', NOW(), 'n8n_sla_cron');"
+        "query": "=INSERT INTO activity_logs (id, lead_id, event_type, description, created_at, created_by) VALUES (gen_random_uuid(), '{{ $json.id }}', 'followup_created', 'Automated 48-hour SLA overdue reminder generated for {{ $json.contact_name }}', NOW(), 'n8n_sla_cron');"
       },
       "id": "log-sla-event",
       "name": "Log Activity Audit",

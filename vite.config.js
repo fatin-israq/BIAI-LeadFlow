@@ -52,15 +52,53 @@ function biaiDevApiPlugin(env) {
                             body_1 += chunk;
                         });
                         req.on('end', function () { return __awaiter(_this, void 0, void 0, function () {
-                            var parsed, geminiKey, geminiModel, prompt_1, geminiRes, data, text, err_1;
+                            var parsed, currentEnv, n8nWebhook, n8nRes, data_1, errStatus, errBody, n8nErr_1, geminiKey, geminiModel, prompt_1, geminiRes, data, text, err_1;
                             var _a, _b, _c, _d, _e;
                             return __generator(this, function (_f) {
                                 switch (_f.label) {
                                     case 0:
-                                        _f.trys.push([0, 3, , 4]);
+                                        _f.trys.push([0, 11, , 12]);
                                         parsed = JSON.parse(body_1 || '{}');
-                                        geminiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-                                        geminiModel = env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+                                        currentEnv = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
+                                        n8nWebhook = currentEnv.N8N_WEBHOOK_URL || env.N8N_WEBHOOK_URL || process.env.N8N_WEBHOOK_URL;
+                                        if (!n8nWebhook) return [3 /*break*/, 8];
+                                        console.log("[AI Middleware] \uD83D\uDD04 Forwarding enquiry to n8n: ".concat(n8nWebhook));
+                                        _f.label = 1;
+                                    case 1:
+                                        _f.trys.push([1, 7, , 8]);
+                                        return [4 /*yield*/, fetch(n8nWebhook, {
+                                                method: 'POST',
+                                                headers: {
+                                                    'Content-Type': 'application/json',
+                                                    'X-N8N-Shared-Secret': currentEnv.N8N_SHARED_SECRET || env.N8N_SHARED_SECRET || '',
+                                                },
+                                                body: JSON.stringify(parsed),
+                                            })];
+                                    case 2:
+                                        n8nRes = _f.sent();
+                                        if (!n8nRes.ok) return [3 /*break*/, 4];
+                                        return [4 /*yield*/, n8nRes.json()];
+                                    case 3:
+                                        data_1 = _f.sent();
+                                        console.log('[AI Middleware] ✅ Successfully processed via n8n!');
+                                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                                        res.end(JSON.stringify(data_1));
+                                        return [2 /*return*/];
+                                    case 4:
+                                        errStatus = n8nRes.status;
+                                        return [4 /*yield*/, n8nRes.text()];
+                                    case 5:
+                                        errBody = _f.sent();
+                                        console.warn("[AI Middleware] \u26A0\uFE0F n8n returned ".concat(errStatus, ": ").concat(errBody, ". Falling back to direct Gemini."));
+                                        _f.label = 6;
+                                    case 6: return [3 /*break*/, 8];
+                                    case 7:
+                                        n8nErr_1 = _f.sent();
+                                        console.warn('[AI Middleware] ⚠️ n8n webhook connection error, falling back to direct Gemini:', n8nErr_1);
+                                        return [3 /*break*/, 8];
+                                    case 8:
+                                        geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+                                        geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
                                         if (!geminiKey) {
                                             res.writeHead(503, { 'Content-Type': 'application/json' });
                                             res.end(JSON.stringify({ error: 'GEMINI_API_KEY not configured', fallback_required: true }));
@@ -78,7 +116,7 @@ function biaiDevApiPlugin(env) {
                                                     },
                                                 }),
                                             })];
-                                    case 1:
+                                    case 9:
                                         geminiRes = _f.sent();
                                         if (!geminiRes.ok) {
                                             res.writeHead(502, { 'Content-Type': 'application/json' });
@@ -86,18 +124,18 @@ function biaiDevApiPlugin(env) {
                                             return [2 /*return*/];
                                         }
                                         return [4 /*yield*/, geminiRes.json()];
-                                    case 2:
+                                    case 10:
                                         data = _f.sent();
                                         text = (_e = (_d = (_c = (_b = (_a = data.candidates) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.content) === null || _c === void 0 ? void 0 : _c.parts) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.text;
                                         res.writeHead(200, { 'Content-Type': 'application/json' });
                                         res.end(text || '{}');
-                                        return [3 /*break*/, 4];
-                                    case 3:
+                                        return [3 /*break*/, 12];
+                                    case 11:
                                         err_1 = _f.sent();
                                         res.writeHead(500, { 'Content-Type': 'application/json' });
                                         res.end(JSON.stringify({ error: err_1.message || 'Internal dev server error' }));
-                                        return [3 /*break*/, 4];
-                                    case 4: return [2 /*return*/];
+                                        return [3 /*break*/, 12];
+                                    case 12: return [2 /*return*/];
                                 }
                             });
                         }); });

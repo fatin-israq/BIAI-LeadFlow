@@ -15,8 +15,43 @@ function biaiDevApiPlugin(env: Record<string, string>): Plugin {
           req.on('end', async () => {
             try {
               const parsed = JSON.parse(body || '{}');
-              const geminiKey = env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-              const geminiModel = env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+
+              // Dynamically reload .env so changes are picked up immediately without restarting Vite
+              const currentEnv = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
+              const n8nWebhook = currentEnv.N8N_WEBHOOK_URL || env.N8N_WEBHOOK_URL || process.env.N8N_WEBHOOK_URL;
+
+              // OPTION A: Forward to live n8n Webhook if configured
+              if (n8nWebhook) {
+                console.log(`[AI Middleware] 🔄 Forwarding enquiry to n8n: ${n8nWebhook}`);
+                try {
+                  const n8nRes = await fetch(n8nWebhook, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'X-N8N-Shared-Secret': currentEnv.N8N_SHARED_SECRET || env.N8N_SHARED_SECRET || '',
+                    },
+                    body: JSON.stringify(parsed),
+                  });
+
+                  if (n8nRes.ok) {
+                    const data = await n8nRes.json();
+                    console.log('[AI Middleware] ✅ Successfully processed via n8n!');
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(data));
+                    return;
+                  } else {
+                    const errStatus = n8nRes.status;
+                    const errBody = await n8nRes.text();
+                    console.warn(`[AI Middleware] ⚠️ n8n returned ${errStatus}: ${errBody}. Falling back to direct Gemini.`);
+                  }
+                } catch (n8nErr) {
+                  console.warn('[AI Middleware] ⚠️ n8n webhook connection error, falling back to direct Gemini:', n8nErr);
+                }
+              }
+
+              // OPTION B: Direct Gemini API call
+              const geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
               if (!geminiKey) {
                 res.writeHead(503, { 'Content-Type': 'application/json' });
