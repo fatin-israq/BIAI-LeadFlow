@@ -286,6 +286,9 @@ export const DashboardPage: React.FC = () => {
                     color: '#fff',
                     fontSize: '12px',
                   }}
+                  itemStyle={{
+                    color: '#fff',
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
