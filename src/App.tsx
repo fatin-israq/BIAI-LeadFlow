@@ -22,6 +22,51 @@ const AppContent: React.FC = () => {
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Sidebar visibility state with localStorage persistence
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('biai_sidebar_open');
+      if (saved !== null) {
+        return saved === 'true';
+      }
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('biai_sidebar_open', String(next));
+      } catch (err) {
+        console.error('LocalStorage write error:', err);
+      }
+      return next;
+    });
+  };
+
+  // Keyboard shortcut (Cmd/Ctrl + B to toggle, Esc to close on small screens)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      } else if (e.key === 'Escape' && isSidebarOpen && window.innerWidth < 1024) {
+        setIsSidebarOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSidebarOpen]);
+
+  // Close sidebar on navigation when on mobile viewports
+  useEffect(() => {
+    if (window.innerWidth < 1024) {
+      setIsSidebarOpen(false);
+    }
+  }, [location.pathname]);
+
   const refreshCounts = async () => {
     try {
       const metrics = await storage.getDashboardMetrics();
@@ -98,8 +143,10 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-navy-50 overflow-hidden font-sans">
-      {/* Left persistent sidebar */}
+      {/* Collapsible sidebar */}
       <Sidebar
+        isOpen={isSidebarOpen}
+        onToggle={toggleSidebar}
         enquiryCount={enquiryCount}
         leadCount={leadCount}
         overdueCount={overdueCount}
@@ -107,11 +154,13 @@ const AppContent: React.FC = () => {
       />
 
       {/* Main content viewport */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         <Header
           title={meta.title}
           description={meta.description}
           overdueCount={overdueCount}
+          isSidebarOpen={isSidebarOpen}
+          onToggleSidebar={toggleSidebar}
           onOpenManualEnquiry={() => setIsManualModalOpen(true)}
         />
 
