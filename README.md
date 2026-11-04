@@ -211,6 +211,27 @@ Creates an optimized production bundle in `dist/`.
    VITE_SUPABASE_ANON_KEY=your-anon-key
    ```
 
+### Vercel Deployment (Recommended)
+1. Push your latest changes to GitHub:
+   ```bash
+   git add .
+   git commit -m "feat: vercel deployment config"
+   git push origin master
+   ```
+2. Log in to [Vercel](https://vercel.com) and click **"Add New Project"** -> **"Import Git Repository"** -> select `BIAI-LeadFlow`.
+3. Vercel automatically detects the **Vite** framework preset:
+   - **Framework Preset**: `Vite`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+4. In **Environment Variables**, add:
+   - `VITE_DEMO_MODE`: `true` (or `false` if using live Supabase)
+   - `VITE_SUPABASE_URL`: (Optional, your Supabase project URL)
+   - `VITE_SUPABASE_ANON_KEY`: (Optional, your Supabase anon public key)
+   - `GEMINI_API_KEY`: (Optional, for backend Gemini 1.5 Flash processing)
+   - `GEMINI_MODEL`: `gemini-1.5-flash`
+   - `N8N_WEBHOOK_URL` & `N8N_SHARED_SECRET`: (Optional, if forwarding to n8n)
+5. Click **Deploy**. Vercel will build the SPA and deploy the serverless Edge function at `/api/ai/process-enquiry`.
+
 ### Cloudflare Pages Deployment
 1. Connect your GitHub repository to Cloudflare Pages.
 2. Build settings:
