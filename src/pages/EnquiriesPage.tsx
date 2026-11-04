@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { EnquiryDetailModal } from '../components/enquiries/EnquiryDetailModal';
 import { ManualEnquiryModal } from '../components/enquiries/ManualEnquiryModal';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 export const EnquiriesPage: React.FC = () => {
   const [enquiries, setEnquiries] = useState<Enquiry[]>([]);
@@ -43,6 +44,13 @@ export const EnquiriesPage: React.FC = () => {
   useEffect(() => {
     loadEnquiries();
   }, [search, channelFilter, languageFilter, categoryFilter, priorityFilter, statusFilter]);
+
+  useRealtimeSync({
+    tables: ['enquiries'],
+    onDataChange: () => {
+      loadEnquiries();
+    },
+  });
 
   const loadEnquiries = async () => {
     setIsLoading(true);

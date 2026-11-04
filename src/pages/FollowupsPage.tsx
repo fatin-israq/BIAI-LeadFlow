@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '../components/ui/Toast';
 import { Modal } from '../components/ui/Modal';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 export const FollowupsPage: React.FC = () => {
   const { showToast } = useToast();
@@ -37,6 +38,13 @@ export const FollowupsPage: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  useRealtimeSync({
+    tables: ['follow_up_tasks', 'leads'],
+    onDataChange: () => {
+      loadData();
+    },
+  });
 
   const loadData = async () => {
     setIsLoading(true);

@@ -153,6 +153,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               ? 'Persisting sample data and state in browser localStorage.'
               : 'Connected to Supabase PostgreSQL workspace.'}
           </p>
+          <div className="mt-2 pt-2 border-t border-navy-100 flex items-center justify-between text-[10px] text-emerald-700 font-medium">
+            <span className="flex items-center gap-1.5">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              Real-time Sync Active
+            </span>
+            <span className="text-navy-400 font-mono text-[9px] uppercase">
+              {isDemo ? 'Broadcast' : 'WebSocket'}
+            </span>
+          </div>
         </div>
 
         {isDemo && (

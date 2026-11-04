@@ -10,6 +10,7 @@ import { FollowupsPage } from './pages/FollowupsPage';
 import { ToastProvider, useToast } from './components/ui/Toast';
 import { storage } from './services/storageAdapter';
 import { ManualEnquiryModal } from './components/enquiries/ManualEnquiryModal';
+import { useRealtimeSync } from './hooks/useRealtimeSync';
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -35,6 +36,17 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     refreshCounts();
   }, [location.pathname, refreshKey]);
+
+  useRealtimeSync({
+    onDataChange: (event) => {
+      refreshCounts();
+      if (event.action === 'INSERT' && event.table === 'enquiries' && event.record) {
+        const sender = event.record.sender_name || 'Prospect';
+        const channel = event.record.source_channel || 'Channel';
+        showToast(`🔔 Live Inbound: New enquiry from ${sender} via ${channel}`, 'info');
+      }
+    },
+  });
 
   const handleResetData = () => {
     storage.resetDemoData();

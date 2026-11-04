@@ -65,8 +65,9 @@ export const ManualEnquiryModal: React.FC<ManualEnquiryModalProps> = ({
       setPhone('');
       setMessage('');
       setInternalNotes('');
-    } catch {
-      showToast('Failed to save manual enquiry', 'error');
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to save manual enquiry';
+      showToast(msg, 'error');
     } finally {
       setIsSubmitting(false);
     }

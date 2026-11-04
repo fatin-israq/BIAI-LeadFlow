@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { LeadDetailModal } from '../components/leads/LeadDetailModal';
 import { useToast } from '../components/ui/Toast';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 const PIPELINE_COLUMNS: { id: PipelineStatus; title: string; color: string }[] = [
   { id: 'New', title: 'New Leads', color: 'border-t-blue-500' },
@@ -39,6 +40,13 @@ export const PipelinePage: React.FC = () => {
   useEffect(() => {
     loadLeads();
   }, []);
+
+  useRealtimeSync({
+    tables: ['leads', 'enquiries'],
+    onDataChange: () => {
+      loadLeads();
+    },
+  });
 
   const loadLeads = async () => {
     setIsLoading(true);

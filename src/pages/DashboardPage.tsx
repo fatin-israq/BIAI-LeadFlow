@@ -40,6 +40,7 @@ import {
 } from '../lib/utils';
 import { EnquiryDetailModal } from '../components/enquiries/EnquiryDetailModal';
 import { WeeklySummaryCard } from '../components/dashboard/WeeklySummaryCard';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 export const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -55,6 +56,12 @@ export const DashboardPage: React.FC = () => {
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useRealtimeSync({
+    onDataChange: () => {
+      loadDashboardData();
+    },
+  });
 
   const loadDashboardData = async () => {
     setIsLoading(true);

@@ -252,9 +252,10 @@ export const AIIntakePage: React.FC = () => {
       } else {
         navigate('/enquiries');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save error:', err);
-      showToast('Failed to save enquiry', 'error');
+      const msg = err?.message || err?.details || 'Failed to save enquiry';
+      showToast(`Failed to save enquiry: ${msg}`, 'error');
     } finally {
       setIsSaving(false);
     }

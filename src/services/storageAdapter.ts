@@ -13,7 +13,8 @@ import {
 } from '../types';
 import { processSampleData, generateId } from './dataImportService';
 import { isOverdue48Hours, isLeadEligibleCategory, normalizePhone } from '../lib/utils';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { realtimeService } from './realtimeService';
 
 const STORAGE_KEYS = {
   ENQUIRIES: 'biai_enquiries_v1',
@@ -45,15 +46,15 @@ class StorageAdapter {
   private isDemoMode: boolean;
 
   constructor() {
-    const isSupabaseConfigured = Boolean(
-      typeof import.meta !== 'undefined' &&
-      import.meta.env?.VITE_SUPABASE_URL &&
-      import.meta.env?.VITE_SUPABASE_ANON_KEY
-    );
+    const isTest =
+      (typeof process !== 'undefined' && (process.env?.NODE_ENV === 'test' || process.env?.VITEST === 'true')) ||
+      (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test');
+
     const forceDemo =
-      typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEMO_MODE === 'true'
-        ? true
-        : !isSupabaseConfigured;
+      isTest ||
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEMO_MODE === 'true') ||
+      !isSupabaseConfigured;
+
     this.isDemoMode = forceDemo;
 
     if (this.isDemoMode) {
@@ -79,6 +80,9 @@ class StorageAdapter {
 
   public resetDemoData(): void {
     this.ensureDemoInitialized(true);
+    realtimeService.broadcastLocalChange('enquiries', 'RESET');
+    realtimeService.broadcastLocalChange('leads', 'RESET');
+    realtimeService.broadcastLocalChange('follow_up_tasks', 'RESET');
   }
 
   // --- ENQUIRIES ---
@@ -198,12 +202,44 @@ class StorageAdapter {
         created_by: 'user',
       });
 
+      realtimeService.broadcastLocalChange('enquiries', 'INSERT', fullEnquiry);
       return fullEnquiry;
     }
 
-    const { data, error } = await supabase.from('enquiries').upsert(fullEnquiry).select().single();
-    if (error) throw error;
-    return data;
+    // Supabase Mode
+    const { data: savedEnquiry, error } = await supabase.from('enquiries').upsert(fullEnquiry).select().single();
+    if (error) {
+      console.error('Supabase save error:', error);
+      throw error;
+    }
+
+    // Check if lead creation/attachment is required in Supabase (if trigger didn't handle it)
+    if (isLeadEligibleCategory(savedEnquiry.category) && !savedEnquiry.lead_id) {
+      try {
+        await this.handleLeadAttachment(savedEnquiry);
+      } catch (attachErr) {
+        console.warn('Lead attachment warning:', attachErr);
+      }
+    }
+
+    // Add activity log in Supabase
+    try {
+      await this.addActivityLog({
+        id: generateId(),
+        enquiry_id: savedEnquiry.id,
+        lead_id: savedEnquiry.lead_id || null,
+        event_type: 'enquiry_received',
+        description: `Enquiry recorded from ${savedEnquiry.source_channel} (${savedEnquiry.category})`,
+        metadata: { sender: savedEnquiry.sender_name, priority: savedEnquiry.priority },
+        created_at: now,
+        created_by: 'user',
+      });
+    } catch (logErr) {
+      console.warn('Activity log warning:', logErr);
+    }
+
+    realtimeService.broadcastLocalChange('enquiries', 'INSERT', savedEnquiry);
+    return savedEnquiry;
   }
 
   private async handleLeadAttachment(enquiry: Enquiry): Promise<void> {
@@ -228,14 +264,19 @@ class StorageAdapter {
       await this.updateLead(targetLead);
 
       enquiry.lead_id = targetLead.id;
-      const rawEnquiries = safeGetItem(STORAGE_KEYS.ENQUIRIES);
-      if (rawEnquiries) {
-        const list: Enquiry[] = JSON.parse(rawEnquiries);
-        const idx = list.findIndex((e) => e.id === enquiry.id);
-        if (idx >= 0) {
-          list[idx].lead_id = targetLead.id;
-          safeSetItem(STORAGE_KEYS.ENQUIRIES, JSON.stringify(list));
+
+      if (this.isDemoMode || !supabase) {
+        const rawEnquiries = safeGetItem(STORAGE_KEYS.ENQUIRIES);
+        if (rawEnquiries) {
+          const list: Enquiry[] = JSON.parse(rawEnquiries);
+          const idx = list.findIndex((e) => e.id === enquiry.id);
+          if (idx >= 0) {
+            list[idx].lead_id = targetLead.id;
+            safeSetItem(STORAGE_KEYS.ENQUIRIES, JSON.stringify(list));
+          }
         }
+      } else {
+        await supabase.from('enquiries').update({ lead_id: targetLead.id }).eq('id', enquiry.id);
       }
 
       await this.addActivityLog({
@@ -273,15 +314,31 @@ class StorageAdapter {
       await this.createLead(newLead);
       enquiry.lead_id = newLeadId;
 
-      const rawEnquiries = safeGetItem(STORAGE_KEYS.ENQUIRIES);
-      if (rawEnquiries) {
-        const list: Enquiry[] = JSON.parse(rawEnquiries);
-        const idx = list.findIndex((e) => e.id === enquiry.id);
-        if (idx >= 0) {
-          list[idx].lead_id = newLeadId;
-          safeSetItem(STORAGE_KEYS.ENQUIRIES, JSON.stringify(list));
+      if (this.isDemoMode || !supabase) {
+        const rawEnquiries = safeGetItem(STORAGE_KEYS.ENQUIRIES);
+        if (rawEnquiries) {
+          const list: Enquiry[] = JSON.parse(rawEnquiries);
+          const idx = list.findIndex((e) => e.id === enquiry.id);
+          if (idx >= 0) {
+            list[idx].lead_id = newLeadId;
+            safeSetItem(STORAGE_KEYS.ENQUIRIES, JSON.stringify(list));
+          }
         }
+      } else {
+        await supabase.from('enquiries').update({ lead_id: newLeadId }).eq('id', enquiry.id);
       }
+
+      // Automatically schedule a 48h SLA response follow-up task
+      const dueAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+      await this.createFollowUpTask({
+        lead_id: newLeadId,
+        enquiry_id: enquiry.id,
+        title: `Initial response SLA follow-up: ${newLead.contact_name}`,
+        description: `Auto-generated 48-hour SLA reminder for incoming enquiry via ${enquiry.source_channel}`,
+        due_at: dueAt,
+        status: 'pending',
+        completed_at: null,
+      });
     }
   }
 
@@ -308,11 +365,13 @@ class StorageAdapter {
       const leads = await this.getLeads();
       leads.unshift(lead);
       safeSetItem(STORAGE_KEYS.LEADS, JSON.stringify(leads));
+      realtimeService.broadcastLocalChange('leads', 'INSERT', lead);
       return lead;
     }
 
     const { data, error } = await supabase.from('leads').insert(lead).select().single();
     if (error) throw error;
+    realtimeService.broadcastLocalChange('leads', 'INSERT', data);
     return data;
   }
 
@@ -327,11 +386,13 @@ class StorageAdapter {
         leads[idx] = updated;
         safeSetItem(STORAGE_KEYS.LEADS, JSON.stringify(leads));
       }
+      realtimeService.broadcastLocalChange('leads', 'UPDATE', updated);
       return updated;
     }
 
     const { data, error } = await supabase.from('leads').update(updated).eq('id', lead.id).select().single();
     if (error) throw error;
+    realtimeService.broadcastLocalChange('leads', 'UPDATE', data);
     return data;
   }
 
@@ -356,6 +417,7 @@ class StorageAdapter {
       created_by: 'user',
     });
 
+    realtimeService.broadcastLocalChange('leads', 'UPDATE', updated);
     return updated;
   }
 
@@ -401,11 +463,13 @@ class StorageAdapter {
         created_by: 'user',
       });
 
+      realtimeService.broadcastLocalChange('follow_up_tasks', 'INSERT', fullTask);
       return fullTask;
     }
 
     const { data, error } = await supabase.from('follow_up_tasks').insert(fullTask).select().single();
     if (error) throw error;
+    realtimeService.broadcastLocalChange('follow_up_tasks', 'INSERT', data);
     return data;
   }
 
@@ -429,6 +493,7 @@ class StorageAdapter {
           created_by: 'user',
         });
       }
+      realtimeService.broadcastLocalChange('follow_up_tasks', 'UPDATE', { id: taskId, status: 'completed' });
       return;
     }
 
@@ -436,6 +501,7 @@ class StorageAdapter {
       .from('follow_up_tasks')
       .update({ status: 'completed', completed_at: now })
       .eq('id', taskId);
+    realtimeService.broadcastLocalChange('follow_up_tasks', 'UPDATE', { id: taskId, status: 'completed' });
   }
 
   // --- ACTIVITY LOGS ---
