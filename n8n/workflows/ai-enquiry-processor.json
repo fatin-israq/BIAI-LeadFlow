@@ -1,5 +1,6 @@
 {
   "name": "BIAI - AI Enquiry Processor",
+  "active": true,
   "nodes": [
     {
       "parameters": {
@@ -64,7 +65,7 @@
     },
     {
       "parameters": {
-        "model": "gemini-1.5-flash",
+        "model": "gemini-3.5-flash",
         "options": {
           "temperature": 0.2
         },
@@ -85,7 +86,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Validate JSON output structure\nconst item = $input.item.json;\nlet parsed = {};\ntry {\n  parsed = typeof item.text === 'string' ? JSON.parse(item.text) : item;\n} catch (e) {\n  parsed = item;\n}\n\nreturn {\n  sender_name: parsed.sender_name || null,\n  phone: parsed.phone || null,\n  language: parsed.language || 'english',\n  category: parsed.category || 'other',\n  programme_interest: parsed.programme_interest || 'unknown',\n  intent: parsed.intent || 'General inquiry',\n  priority: parsed.priority || 'medium',\n  sentiment: parsed.sentiment || 'neutral',\n  confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.9,\n  key_details: Array.isArray(parsed.key_details) ? parsed.key_details : [],\n  requested_follow_up: parsed.requested_follow_up || null,\n  requires_human_review: Boolean(parsed.requires_human_review),\n  review_reason: parsed.review_reason || null,\n  suggested_reply: parsed.suggested_reply || 'Thank you for reaching out to BIAI. Our team will get back to you shortly.',\n  processed_at: new Date().toISOString()\n};"
+        "jsCode": "// Validate JSON output structure\nconst item = $input.item.json;\nlet parsed = {};\ntry {\n  let rawText = typeof item.text === 'string' ? item.text : (item.response?.text || item.output || '');\n  if (rawText) {\n    const match = rawText.match(/\\{[\\s\\S]*\\}/);\n    parsed = match ? JSON.parse(match[0]) : JSON.parse(rawText);\n  } else {\n    parsed = item;\n  }\n} catch (e) {\n  parsed = item;\n}\n\nlet category = parsed.category || 'other';\nif (typeof category === 'string') category = category.toLowerCase().trim().replace(/[-\\s]+/g, '_');\n\nlet programme = parsed.programme_interest || 'unknown';\nif (typeof programme === 'string') programme = programme.toLowerCase().trim().replace(/[-\\s]+/g, '_');\n\nlet language = parsed.language || 'english';\nif (typeof language === 'string') language = language.toLowerCase().trim();\n\nlet keyDetails = [];\nif (Array.isArray(parsed.key_details)) {\n  keyDetails = parsed.key_details.map(k => typeof k === 'string' ? k : JSON.stringify(k));\n} else if (parsed.key_details && typeof parsed.key_details === 'object') {\n  keyDetails = Object.entries(parsed.key_details).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`);\n}\n\nreturn {\n  sender_name: parsed.sender_name || null,\n  phone: parsed.phone || null,\n  language: language,\n  category: category,\n  programme_interest: programme,\n  intent: parsed.intent || 'General inquiry',\n  priority: typeof parsed.priority === 'string' ? parsed.priority.toLowerCase() : 'medium',\n  sentiment: typeof parsed.sentiment === 'string' ? parsed.sentiment.toLowerCase() : 'neutral',\n  confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.95,\n  key_details: keyDetails,\n  requested_follow_up: typeof parsed.requested_follow_up === 'string' ? parsed.requested_follow_up : null,\n  requires_human_review: Boolean(parsed.requires_human_review),\n  review_reason: parsed.review_reason || null,\n  suggested_reply: parsed.suggested_reply || 'Thank you for reaching out to BIAI. Our team will get back to you shortly.',\n  processed_at: new Date().toISOString()\n};"
       },
       "id": "validate-schema",
       "name": "Validate Structured Output",

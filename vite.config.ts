@@ -7,6 +7,115 @@ function biaiDevApiPlugin(env: Record<string, string>): Plugin {
     name: 'biai-dev-api-middleware',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        if (req.url === '/api/ai/generate-summary' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk) => {
+            body += chunk;
+          });
+          req.on('end', async () => {
+            try {
+              const parsed = JSON.parse(body || '{}');
+              const currentEnv = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
+              const geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+
+              if (!geminiKey) {
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'GEMINI_API_KEY not configured', fallback_required: true }));
+                return;
+              }
+
+              const prompt = `You are the Executive AI Intelligence Assistant for BIAI (Bangladesh Institute of Artificial Intelligence).
+Synthesize the provided real customer enquiries, corporate pipeline opportunities, and 48-hour SLA risks from the past week into an executive briefing for leadership.
+
+Analyze the REAL data provided:
+1. Executive Summary: 2-3 sentences summarizing enquiry trends, channel volumes, qualified leads vs noise (spam/job applicants), high-value corporate deals, and SLA status.
+2. Key Highlights: 3-4 bullet points summarizing real enquiry volume, top channels, qualified leads, and spam/job isolation.
+3. Corporate Pipeline: Identify all corporate training deals from the data with real seat estimates, company names, contact names, and priority. Total potential seats must be the exact sum of all seats across the deals.
+4. Critical Attention Items: Highlight urgent escalations (refund requests, payment verification issues like bKash/Nagad) and overdue leads past 48h SLA.
+5. Action Plan: 4 prioritized, highly actionable steps for sales, accounts, and operations teams to execute this week.
+
+Return ONLY raw JSON with this exact schema:
+{
+  "headline": string,
+  "period": string,
+  "executive_summary": string,
+  "highlights": string[],
+  "corporate_pipeline": {
+    "total_potential_seats": number,
+    "deals": [
+      { "name": string, "company": string, "seats": number, "priority": "High" | "Medium" | "Low" }
+    ]
+  },
+  "critical_attention_items": string[],
+  "action_plan": string[]
+}
+
+Data for Analysis:
+- Period: ${parsed.period || 'Current Intake Cycle'}
+- Total Inbound Enquiries: ${parsed.total_enquiries || 0}
+- Enquiries by Channel: ${JSON.stringify(parsed.enquiries_by_channel || [])}
+- Qualified Sales Leads: ${parsed.genuine_sales_leads || 0}
+- Corporate Training Opportunities: ${JSON.stringify(parsed.corporate_leads || [])}
+- Urgent Issues / Escalations: ${JSON.stringify(parsed.urgent_issues || [])}
+- SLA Breaches (>48h Overdue Leads): ${JSON.stringify(parsed.overdue_leads || [])}
+- Representative Enquiry Digest: ${JSON.stringify(parsed.enquiries_sample || [])}`;
+
+              let geminiRes = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    generationConfig: {
+                      responseMimeType: 'application/json',
+                      temperature: 0.2,
+                    },
+                  }),
+                }
+              );
+
+              // If primary model is unavailable or 404, fallback to gemini-3.5-flash-lite
+              if (!geminiRes.ok && geminiModel !== 'gemini-flash-latest') {
+                console.warn(`[AI Middleware] ${geminiModel} returned ${geminiRes.status}. Retrying with gemini-flash-latest...`);
+                geminiRes = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                      generationConfig: {
+                        responseMimeType: 'application/json',
+                        temperature: 0.2,
+                      },
+                    }),
+                  }
+                );
+              }
+
+              if (!geminiRes.ok) {
+                res.writeHead(502, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: `Gemini API returned ${geminiRes.status}` }));
+                return;
+              }
+
+              const data = await geminiRes.json();
+              const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              let rawText = text || '{}';
+              const match = rawText.match(/\{[\s\S]*\}/);
+              if (match) rawText = match[0];
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(rawText);
+            } catch (err: any) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err.message || 'Internal dev server error' }));
+            }
+          });
+          return;
+        }
+
         if (req.url === '/api/ai/process-enquiry' && req.method === 'POST') {
           let body = '';
           req.on('data', (chunk) => {
@@ -35,10 +144,19 @@ function biaiDevApiPlugin(env: Record<string, string>): Plugin {
 
                   if (n8nRes.ok) {
                     const data = await n8nRes.json();
-                    console.log('[AI Middleware] ✅ Successfully processed via n8n!');
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify(data));
-                    return;
+                    const isN8nFallback =
+                      (data.category === 'other' || !data.category) &&
+                      (!data.key_details || data.key_details.length === 0) &&
+                      data.intent === 'General inquiry';
+
+                    if (!isN8nFallback) {
+                      console.log('[AI Middleware] ✅ Successfully processed via n8n!');
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify(data));
+                      return;
+                    } else {
+                      console.warn('[AI Middleware] ⚠️ n8n returned dummy fallback output. Falling back to direct Gemini.');
+                    }
                   } else {
                     const errStatus = n8nRes.status;
                     const errBody = await n8nRes.text();
@@ -51,7 +169,7 @@ function biaiDevApiPlugin(env: Record<string, string>): Plugin {
 
               // OPTION B: Direct Gemini API call
               const geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
               if (!geminiKey) {
                 res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -73,7 +191,7 @@ Sender: ${parsed.sender_name || 'None'}
 Phone: ${parsed.phone || 'None'}
 Message: "${parsed.message || ''}"`;
 
-              const geminiRes = await fetch(
+              let geminiRes = await fetch(
                 `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`,
                 {
                   method: 'POST',
@@ -88,6 +206,24 @@ Message: "${parsed.message || ''}"`;
                 }
               );
 
+              if (!geminiRes.ok && geminiModel !== 'gemini-flash-latest') {
+                console.warn(`[AI Middleware] ${geminiModel} returned ${geminiRes.status}. Retrying with gemini-flash-latest...`);
+                geminiRes = await fetch(
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                      generationConfig: {
+                        responseMimeType: 'application/json',
+                        temperature: 0.2,
+                      },
+                    }),
+                  }
+                );
+              }
+
               if (!geminiRes.ok) {
                 res.writeHead(502, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: `Gemini API returned ${geminiRes.status}` }));
@@ -96,8 +232,11 @@ Message: "${parsed.message || ''}"`;
 
               const data = await geminiRes.json();
               const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              let rawText = text || '{}';
+              const match = rawText.match(/\{[\s\S]*\}/);
+              if (match) rawText = match[0];
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(text || '{}');
+              res.end(rawText);
             } catch (err: any) {
               res.writeHead(500, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: err.message || 'Internal dev server error' }));

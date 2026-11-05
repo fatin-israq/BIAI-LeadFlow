@@ -43,7 +43,7 @@ export const WeeklySummaryCard: React.FC<WeeklySummaryCardProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [completedActions, setCompletedActions] = useState<Record<number, boolean>>({});
 
-  // Auto-synthesize on initial load if metrics are present
+  // Auto-synthesize on initial load if records are present
   useEffect(() => {
     if (!summary && enquiries.length > 0) {
       handleGenerate(false);
@@ -72,6 +72,9 @@ export const WeeklySummaryCard: React.FC<WeeklySummaryCardProps> = ({
     }));
   };
 
+  const totalSeats = summary?.corporate_pipeline?.total_potential_seats ?? 175;
+  const corporateDeals = summary?.corporate_pipeline?.deals || [];
+
   const handleCopy = () => {
     if (!summary) return;
     const text = `
@@ -84,8 +87,8 @@ ${summary.executive_summary}
 ## Key Topline Highlights
 ${summary.highlights.map((h) => `- ${h}`).join('\n')}
 
-## Corporate Training Pipeline (175 seats)
-${summary.corporate_pipeline.deals
+## Corporate Training Pipeline (${totalSeats} seats)
+${corporateDeals
   .map((d) => `- ${d.name} (${d.company}) — ${d.seats} seats [Priority: ${d.priority}]`)
   .join('\n')}
 
@@ -102,36 +105,125 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
     setTimeout(() => setIsCopied(false), 2500);
   };
 
-  // Structured action items parsing for clear categorization & scannability
-  const parsedActions = [
-    {
-      role: 'Enterprise Partnerships',
-      roleBadge: 'bg-purple-100 text-purple-700 border-purple-200',
-      title: 'Deliver Tailored B2B AI Proposals',
-      desc: 'Immediate phone outreach to Kamrul Islam (Motijheel Bank, 120 seats) and Mahmud Hasan (Gazipur Textile, 40 seats) with customized cohort curriculums.',
-      urgent: true,
-    },
-    {
-      role: 'Finance & Accounts',
-      roleBadge: 'bg-amber-100 text-amber-700 border-amber-200',
-      title: 'Reconcile bKash TrxID for Farzana Rahman',
-      desc: 'Verify unconfirmed transfer with bank statement and issue official admission confirmation to prevent drop-off.',
-      urgent: true,
-    },
-    {
-      role: 'Operations & Support',
-      roleBadge: 'bg-rose-100 text-rose-700 border-rose-200',
-      title: 'Executive Call for Habibur Rahman',
-      desc: 'Provide empathetic resolution to refund/cancellation request to protect brand reputation and prevent public social media escalation.',
-      urgent: true,
-    },
-    {
-      role: 'Admissions Team',
-      roleBadge: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-      title: 'Clear 14 Overdue SLA Leads',
-      desc: 'Dispatch rapid pre-drafted AI responses in Banglish and Bengali across WhatsApp & Messenger to recover conversion momentum.',
-      urgent: false,
-    },
+  // Helper to dynamically parse action items into structured, scannable cards
+  const formatActionItem = (raw: string, index: number) => {
+    const cleaned = raw.replace(/^(\d+[\.\)]\s*|\[\s*\]\s*|[-*]\s*)/, '').trim();
+    let role = 'Admissions';
+    let roleBadge = 'bg-brand-100 text-brand-700 border-brand-200';
+    let urgent = false;
+
+    const lower = cleaned.toLowerCase();
+    if (
+      lower.includes('b2b') ||
+      lower.includes('corporate') ||
+      lower.includes('bank') ||
+      lower.includes('textile') ||
+      lower.includes('proposal')
+    ) {
+      role = 'Enterprise Partnerships';
+      roleBadge = 'bg-purple-100 text-purple-700 border-purple-200';
+      urgent = true;
+    } else if (
+      lower.includes('bkash') ||
+      lower.includes('payment') ||
+      lower.includes('finance') ||
+      lower.includes('trx') ||
+      lower.includes('reconcil')
+    ) {
+      role = 'Finance & Accounts';
+      roleBadge = 'bg-amber-100 text-amber-700 border-amber-200';
+      urgent = true;
+    } else if (
+      lower.includes('refund') ||
+      lower.includes('habibur') ||
+      lower.includes('escalat') ||
+      lower.includes('operations') ||
+      lower.includes('brand risk')
+    ) {
+      role = 'Operations & Support';
+      roleBadge = 'bg-rose-100 text-rose-700 border-rose-200';
+      urgent = true;
+    } else if (
+      lower.includes('sla') ||
+      lower.includes('overdue') ||
+      lower.includes('backlog') ||
+      lower.includes('reply')
+    ) {
+      role = 'Admissions Team';
+      roleBadge = 'bg-indigo-100 text-indigo-700 border-indigo-200';
+    }
+
+    let title = cleaned;
+    let desc = cleaned;
+    if (cleaned.includes(':')) {
+      const parts = cleaned.split(':');
+      title = parts[0].trim();
+      desc = parts.slice(1).join(':').trim();
+    } else if (cleaned.length > 55) {
+      const words = cleaned.split(' ');
+      title = words.slice(0, 5).join(' ');
+      desc = cleaned;
+    }
+
+    return { role, roleBadge, title, desc, urgent };
+  };
+
+  // Helper to dynamically parse critical items into styled triage cards
+  const formatCriticalItem = (raw: string) => {
+    let badge = 'SLA Alert';
+    let badgeClass = 'bg-indigo-100 text-indigo-700 border-indigo-200';
+    let borderClass = 'border-indigo-200 bg-indigo-50/30';
+    let actionLabel = 'Review';
+
+    const lower = raw.toLowerCase();
+    if (
+      lower.includes('refund') ||
+      lower.includes('escalat') ||
+      lower.includes('threat') ||
+      lower.includes('dissatisfaction')
+    ) {
+      badge = 'Urgent Escalation';
+      badgeClass = 'bg-rose-100 text-rose-700 border-rose-200';
+      borderClass = 'border-rose-200 bg-rose-50/30';
+      actionLabel = 'Call Today';
+    } else if (
+      lower.includes('payment') ||
+      lower.includes('bkash') ||
+      lower.includes('trx')
+    ) {
+      badge = 'Payment Verification';
+      badgeClass = 'bg-amber-100 text-amber-700 border-amber-200';
+      borderClass = 'border-amber-200 bg-amber-50/30';
+      actionLabel = 'Verify TrxID';
+    } else if (lower.includes('sla') || lower.includes('overdue') || lower.includes('48-hour')) {
+      badge = '48h SLA Alert';
+      badgeClass = 'bg-indigo-100 text-indigo-700 border-indigo-200';
+      borderClass = 'border-indigo-200 bg-indigo-50/30';
+      actionLabel = 'Batch Outreach';
+    }
+
+    let title = raw;
+    let desc = raw;
+    if (raw.includes(':')) {
+      const parts = raw.split(':');
+      title = parts[0].trim();
+      desc = parts.slice(1).join(':').trim();
+    }
+
+    return { badge, badgeClass, borderClass, actionLabel, title, desc };
+  };
+
+  const actionItems = summary?.action_plan || [
+    'Prioritize immediate phone outreach to Kamrul Islam (Motijheel Bank) and Mahmud Hasan (Gazipur Textile).',
+    "Finance team must reconcile Farzana Rahman's bKash payment and dispatch official admission confirmation.",
+    'Operations lead must contact Habibur Rahman with an empathetic resolution to de-escalate public brand risk.',
+    'Clear overdue lead follow-up backlog using the AI suggested replies in Banglish/Bangla.',
+  ];
+
+  const criticalItems = summary?.critical_attention_items || [
+    'Urgent Escalation: Habibur Rahman (Phone note) demanded immediate refund and threatened social media post. Needs senior director call today.',
+    'Payment Verification: Farzana Rahman (WhatsApp) reported an unconfirmed bKash transfer from Oct 25. Requires TrxID verification before enrollment.',
+    `SLA Compliance: ${metrics.followUpsOverdue} qualified leads are past the 48-hour contact window. Outreach response times must be stabilized.`,
   ];
 
   return (
@@ -147,12 +239,20 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
               <h3 className="text-sm font-bold text-navy-900 tracking-tight">
                 AI Weekly Executive Intelligence
               </h3>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 border border-brand-200/60">
-                Weekly Brief
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  summary?.is_mock === false
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                    : 'bg-brand-100 text-brand-700'
+                }`}
+              >
+                {summary?.is_mock === false ? 'Gemini 3 Flash • Live' : 'AI Synthesis'}
               </span>
-              <span className="text-[10px] text-navy-400 font-mono hidden md:inline">
-                Cycle: 26–27 Oct
-              </span>
+              {summary?.period && (
+                <span className="text-[10px] text-navy-500 font-mono hidden md:inline bg-navy-50 px-2 py-0.5 rounded border border-navy-200/60">
+                  Cycle: {summary.period}
+                </span>
+              )}
             </div>
             <p className="text-xs text-navy-500 mt-0.5">
               Automated multi-channel triage, corporate opportunities, and SLA risk synthesis
@@ -222,10 +322,16 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="text-lg font-bold text-navy-900">
-                70% <span className="text-xs font-normal text-emerald-700 font-semibold">(14/20)</span>
+                {metrics.totalEnquiries > 0
+                  ? Math.round((metrics.genuineSalesLeads / metrics.totalEnquiries) * 100)
+                  : 70}
+                %{' '}
+                <span className="text-xs font-normal text-emerald-700 font-semibold">
+                  ({metrics.genuineSalesLeads}/{metrics.totalEnquiries})
+                </span>
               </div>
               <p className="text-[10px] text-navy-500 mt-0.5 truncate">
-                Qualified prospective leads
+                Qualified sales prospects
               </p>
             </button>
 
@@ -245,10 +351,10 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
                 <Building className="w-4 h-4 text-purple-600" />
               </div>
               <div className="text-lg font-bold text-navy-900">
-                175 <span className="text-xs font-semibold text-purple-700">Seats</span>
+                {totalSeats} <span className="text-xs font-semibold text-purple-700">Seats</span>
               </div>
               <p className="text-[10px] text-navy-500 mt-0.5 truncate">
-                3 enterprise organizations
+                {corporateDeals.length} active enterprise deals
               </p>
             </button>
 
@@ -268,10 +374,11 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
                 <AlertTriangle className="w-4 h-4 text-rose-600" />
               </div>
               <div className="text-lg font-bold text-navy-900">
-                14 <span className="text-xs font-semibold text-rose-600">SLA Risks</span>
+                {metrics.followUpsOverdue}{' '}
+                <span className="text-xs font-semibold text-rose-600">SLA Risks</span>
               </div>
               <p className="text-[10px] text-rose-600 font-medium mt-0.5 truncate">
-                2 customer escalations
+                {criticalItems.length} triage items flagged
               </p>
             </button>
 
@@ -291,7 +398,7 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
                 <CheckSquare className="w-4 h-4 text-brand-600" />
               </div>
               <div className="text-lg font-bold text-navy-900">
-                {Object.values(completedActions).filter(Boolean).length}/4{' '}
+                {Object.values(completedActions).filter(Boolean).length}/{actionItems.length}{' '}
                 <span className="text-xs font-semibold text-brand-700">Done</span>
               </div>
               <p className="text-[10px] text-navy-500 mt-0.5 truncate">
@@ -307,7 +414,25 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
             </div>
             <div className="text-navy-800 leading-relaxed text-[11.5px]">
               <span className="font-bold text-navy-900">Executive Takeaway: </span>
-              AI filtered noise into <strong className="text-brand-900 font-bold">14 sales-qualified leads</strong> (70% conversion quality), uncovered <strong className="text-purple-900 font-bold">175 B2B training seats</strong> across 3 corporate buyers, and isolated <strong className="text-rose-700 font-bold">14 SLA follow-ups</strong> requiring immediate outreach.
+              {summary ? (
+                summary.executive_summary
+              ) : (
+                <>
+                  AI filtered noise into{' '}
+                  <strong className="text-brand-900 font-bold">
+                    {metrics.genuineSalesLeads} sales-qualified leads
+                  </strong>
+                  , uncovered{' '}
+                  <strong className="text-purple-900 font-bold">
+                    {totalSeats} B2B training seats
+                  </strong>{' '}
+                  across corporate buyers, and isolated{' '}
+                  <strong className="text-rose-700 font-bold">
+                    {metrics.followUpsOverdue} SLA follow-ups
+                  </strong>{' '}
+                  requiring immediate outreach.
+                </>
+              )}
             </div>
           </div>
 
@@ -324,7 +449,7 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
               <TrendingUp className="w-3.5 h-3.5" />
               <span>Key Highlights</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-navy-100 text-navy-600 font-bold">
-                4
+                {summary?.highlights?.length || 4}
               </span>
             </button>
 
@@ -339,7 +464,7 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
               <Building className="w-3.5 h-3.5" />
               <span>Corporate Pipeline</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-purple-100 text-purple-700 font-bold">
-                175 seats
+                {totalSeats} seats
               </span>
             </button>
 
@@ -354,7 +479,7 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
               <AlertTriangle className="w-3.5 h-3.5" />
               <span>Urgent & SLA Attention</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-100 text-rose-700 font-bold">
-                3
+                {criticalItems.length}
               </span>
             </button>
 
@@ -369,7 +494,7 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
               <CheckSquare className="w-3.5 h-3.5" />
               <span>Action Plan</span>
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-brand-100 text-brand-700 font-bold">
-                4
+                {actionItems.length}
               </span>
             </button>
 
@@ -392,53 +517,57 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
           {(activeTab === 'overview' || activeTab === 'all') && (
             <div className="space-y-3 pt-1 animate-in fade-in duration-150">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 rounded-xl border border-navy-100 bg-navy-50/30 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-navy-900 text-xs">Multi-Channel Inbound</h5>
-                    <p className="text-[11px] text-navy-600 mt-0.5 leading-relaxed">
-                      Captured <strong>20 enquiries</strong> across WhatsApp (8), Messenger (5), Phone (3), Web (2), and Comments (2).
-                    </p>
-                  </div>
-                </div>
+                {summary?.highlights && summary.highlights.length > 0 ? (
+                  summary.highlights.map((h, i) => (
+                    <div
+                      key={i}
+                      className="p-3.5 rounded-xl border border-navy-100 bg-navy-50/30 flex items-start gap-3"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
+                        {i === 0 ? (
+                          <TrendingUp className="w-4 h-4" />
+                        ) : i === 1 ? (
+                          <CheckCircle2 className="w-4 h-4" />
+                        ) : i === 2 ? (
+                          <Building className="w-4 h-4" />
+                        ) : (
+                          <ShieldAlert className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-navy-900 text-xs">Highlight #{i + 1}</h5>
+                        <p className="text-[11px] text-navy-600 mt-0.5 leading-relaxed">{h}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    <div className="p-3.5 rounded-xl border border-navy-100 bg-navy-50/30 flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+                        <TrendingUp className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-navy-900 text-xs">Multi-Channel Inbound</h5>
+                        <p className="text-[11px] text-navy-600 mt-0.5 leading-relaxed">
+                          Captured <strong>{metrics.totalEnquiries} enquiries</strong> across
+                          WhatsApp, Messenger, Phone, Web, and Social comments.
+                        </p>
+                      </div>
+                    </div>
 
-                <div className="p-3.5 rounded-xl border border-navy-100 bg-navy-50/30 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-navy-900 text-xs">High Lead Qualification</h5>
-                    <p className="text-[11px] text-navy-600 mt-0.5 leading-relaxed">
-                      Identified <strong>14 genuine prospective students</strong> (70% conversion qualification rate) ready for enrollment follow-up.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-navy-100 bg-navy-50/30 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-                    <Building className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-navy-900 text-xs">Corporate Upskilling Wave</h5>
-                    <p className="text-[11px] text-navy-600 mt-0.5 leading-relaxed">
-                      Captured <strong>175 potential seats</strong> across Banking, Textiles, and Manufacturing SME sectors.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-navy-100 bg-navy-50/30 flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-                    <ShieldAlert className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h5 className="font-bold text-navy-900 text-xs">Spam & Noise Shield</h5>
-                    <p className="text-[11px] text-navy-600 mt-0.5 leading-relaxed">
-                      Safely quarantined 1 crypto spam message and routed 1 internship application away from sales pipelines.
-                    </p>
-                  </div>
-                </div>
+                    <div className="p-3.5 rounded-xl border border-navy-100 bg-navy-50/30 flex items-start gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-navy-900 text-xs">Lead Qualification</h5>
+                        <p className="text-[11px] text-navy-600 mt-0.5 leading-relaxed">
+                          Identified <strong>{metrics.genuineSalesLeads} genuine sales leads</strong> ready for admissions follow-up.
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -448,7 +577,7 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
             <div className="space-y-3 pt-1 animate-in fade-in duration-150">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-navy-700">
-                  Target Pipeline Distribution (175 Total Learners)
+                  Target Pipeline Distribution ({totalSeats} Total Learners)
                 </span>
                 <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
                   High-Value Enterprise
@@ -456,44 +585,61 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
               </div>
 
               {/* Progress bar visual */}
-              <div className="w-full h-2 rounded-full bg-navy-100 overflow-hidden flex">
-                <div style={{ width: '68.5%' }} className="bg-purple-600 h-full" title="Motijheel Bank: 120 seats" />
-                <div style={{ width: '22.8%' }} className="bg-indigo-500 h-full" title="Gazipur Textile: 40 seats" />
-                <div style={{ width: '8.7%' }} className="bg-brand-400 h-full" title="Garment SME: 15 seats" />
-              </div>
+              {corporateDeals.length > 0 && totalSeats > 0 && (
+                <div className="w-full h-2 rounded-full bg-navy-100 overflow-hidden flex">
+                  {corporateDeals.map((d, i) => {
+                    const pct = Math.max(5, Math.round((d.seats / totalSeats) * 100));
+                    const colors = ['bg-purple-600', 'bg-indigo-500', 'bg-brand-400', 'bg-blue-400'];
+                    return (
+                      <div
+                        key={i}
+                        style={{ width: `${pct}%` }}
+                        className={`${colors[i % colors.length]} h-full`}
+                        title={`${d.company}: ${d.seats} seats`}
+                      />
+                    );
+                  })}
+                </div>
+              )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {summary?.corporate_pipeline.deals.map((deal, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 rounded-xl border border-purple-100 bg-purple-50/30 space-y-2 flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
-                          {deal.seats} Seats
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            deal.priority === 'High'
-                              ? 'bg-rose-100 text-rose-700'
-                              : 'bg-amber-100 text-amber-700'
-                          }`}
-                        >
-                          {deal.priority} Priority
-                        </span>
+              {corporateDeals.length === 0 ? (
+                <div className="p-6 rounded-xl border border-navy-100 bg-navy-50/20 text-center text-navy-500 text-xs">
+                  No corporate inquiries recorded in this cycle.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {corporateDeals.map((deal, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3.5 rounded-xl border border-purple-100 bg-purple-50/30 space-y-2 flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                            {deal.seats} Seats
+                          </span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              deal.priority === 'High' || deal.priority === 'high'
+                                ? 'bg-rose-100 text-rose-700'
+                                : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            {deal.priority} Priority
+                          </span>
+                        </div>
+                        <h5 className="font-bold text-navy-900 text-xs mt-2">{deal.company}</h5>
+                        <p className="text-[11px] text-navy-600">Decision Maker: {deal.name}</p>
                       </div>
-                      <h5 className="font-bold text-navy-900 text-xs mt-2">{deal.company}</h5>
-                      <p className="text-[11px] text-navy-600">Decision Maker: {deal.name}</p>
-                    </div>
 
-                    <div className="pt-2 border-t border-purple-100/80 flex items-center justify-between text-[10px] text-purple-800 font-medium">
-                      <span>Action required</span>
-                      <span className="underline">Syllabus Proposal</span>
+                      <div className="pt-2 border-t border-purple-100/80 flex items-center justify-between text-[10px] text-purple-800 font-medium">
+                        <span>Action required</span>
+                        <span className="underline">Syllabus Proposal</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -501,65 +647,34 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
           {(activeTab === 'escalations' || activeTab === 'all') && (
             <div className="space-y-3 pt-1 animate-in fade-in duration-150">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {/* Habibur refund */}
-                <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/30 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200">
-                        Urgent Escalation
-                      </span>
-                      <span className="text-[10px] font-semibold text-rose-600">Phone Note</span>
+                {criticalItems.map((raw, idx) => {
+                  const item = formatCriticalItem(raw);
+                  return (
+                    <div
+                      key={idx}
+                      className={`p-3.5 rounded-xl border ${item.borderClass} space-y-2 flex flex-col justify-between`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.badgeClass}`}
+                          >
+                            {item.badge}
+                          </span>
+                          <span className="text-[10px] font-semibold text-navy-500">Alert</span>
+                        </div>
+                        <h5 className="font-bold text-navy-900 text-xs mt-2">{item.title}</h5>
+                        <p className="text-[11px] text-navy-600 leading-relaxed">{item.desc}</p>
+                      </div>
+                      <div className="pt-2 border-t border-navy-200/60 text-[10px] font-semibold text-navy-700 flex items-center justify-between">
+                        <span>Status</span>
+                        <span className="bg-white px-2 py-0.5 rounded border border-navy-200">
+                          {item.actionLabel}
+                        </span>
+                      </div>
                     </div>
-                    <h5 className="font-bold text-navy-900 text-xs mt-2">Habibur Rahman</h5>
-                    <p className="text-[11px] text-navy-600 leading-relaxed">
-                      Demanded immediate refund and threatened social media escalation. Needs senior director call today.
-                    </p>
-                  </div>
-                  <div className="pt-2 border-t border-rose-200/80 text-[10px] font-semibold text-rose-700 flex items-center justify-between">
-                    <span>Priority triage</span>
-                    <span className="bg-white px-2 py-0.5 rounded border border-rose-300">Call Today</span>
-                  </div>
-                </div>
-
-                {/* Farzana bKash */}
-                <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/30 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
-                        Payment Verification
-                      </span>
-                      <span className="text-[10px] font-semibold text-amber-700">WhatsApp</span>
-                    </div>
-                    <h5 className="font-bold text-navy-900 text-xs mt-2">Farzana Rahman</h5>
-                    <p className="text-[11px] text-navy-600 leading-relaxed">
-                      Reported unconfirmed bKash transfer from Oct 25. Requires TrxID cross-check with finance before enrollment.
-                    </p>
-                  </div>
-                  <div className="pt-2 border-t border-amber-200/80 text-[10px] font-semibold text-amber-700 flex items-center justify-between">
-                    <span>Account reconcile</span>
-                    <span className="bg-white px-2 py-0.5 rounded border border-amber-300">Verify TrxID</span>
-                  </div>
-                </div>
-
-                {/* 14 SLA Overdue */}
-                <div className="p-3.5 rounded-xl border border-indigo-200 bg-indigo-50/30 space-y-2 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
-                        48h SLA Alert
-                      </span>
-                      <span className="text-[10px] font-semibold text-indigo-700">CRM Queue</span>
-                    </div>
-                    <h5 className="font-bold text-navy-900 text-xs mt-2">14 Qualified Leads Overdue</h5>
-                    <p className="text-[11px] text-navy-600 leading-relaxed">
-                      Prospective leads breached the 48-hour response window. Outreach response times must be stabilized.
-                    </p>
-                  </div>
-                  <div className="pt-2 border-t border-indigo-200/80 text-[10px] font-semibold text-indigo-700 flex items-center justify-between">
-                    <span>Batch Outreach</span>
-                    <span className="bg-white px-2 py-0.5 rounded border border-indigo-300">One-Click AI Reply</span>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -577,7 +692,8 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {parsedActions.map((act, idx) => {
+                {actionItems.map((raw, idx) => {
+                  const act = formatActionItem(raw, idx);
                   const isDone = !!completedActions[idx];
                   return (
                     <div
@@ -639,5 +755,3 @@ ${summary.action_plan.map((act, i) => `${completedActions[i] ? '[x]' : '[ ]'} ${
     </div>
   );
 };
-
-
