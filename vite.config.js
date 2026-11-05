@@ -52,7 +52,7 @@ function biaiDevApiPlugin(env) {
                             body_1 += chunk;
                         });
                         req.on('end', function () { return __awaiter(_this, void 0, void 0, function () {
-                            var parsed, currentEnv, geminiKey, geminiModel, prompt_1, geminiRes, data, text, err_1;
+                            var parsed, currentEnv, geminiKey, geminiModel, prompt_1, geminiRes, data, text, rawText, match, err_1;
                             var _a, _b, _c, _d, _e;
                             return __generator(this, function (_f) {
                                 switch (_f.label) {
@@ -61,7 +61,7 @@ function biaiDevApiPlugin(env) {
                                         parsed = JSON.parse(body_1 || '{}');
                                         currentEnv = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
                                         geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-                                        geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+                                        geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
                                         if (!geminiKey) {
                                             res.writeHead(503, { 'Content-Type': 'application/json' });
                                             res.end(JSON.stringify({ error: 'GEMINI_API_KEY not configured', fallback_required: true }));
@@ -81,9 +81,9 @@ function biaiDevApiPlugin(env) {
                                             })];
                                     case 1:
                                         geminiRes = _f.sent();
-                                        if (!(!geminiRes.ok && geminiModel !== 'gemini-3.5-flash-lite')) return [3 /*break*/, 3];
-                                        console.warn("[AI Middleware] ".concat(geminiModel, " returned ").concat(geminiRes.status, ". Retrying with gemini-3.5-flash-lite..."));
-                                        return [4 /*yield*/, fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=".concat(geminiKey), {
+                                        if (!(!geminiRes.ok && geminiModel !== 'gemini-flash-latest')) return [3 /*break*/, 3];
+                                        console.warn("[AI Middleware] ".concat(geminiModel, " returned ").concat(geminiRes.status, ". Retrying with gemini-flash-latest..."));
+                                        return [4 /*yield*/, fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=".concat(geminiKey), {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({
@@ -107,8 +107,12 @@ function biaiDevApiPlugin(env) {
                                     case 4:
                                         data = _f.sent();
                                         text = (_e = (_d = (_c = (_b = (_a = data.candidates) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.content) === null || _c === void 0 ? void 0 : _c.parts) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.text;
+                                        rawText = text || '{}';
+                                        match = rawText.match(/\{[\s\S]*\}/);
+                                        if (match)
+                                            rawText = match[0];
                                         res.writeHead(200, { 'Content-Type': 'application/json' });
-                                        res.end(text || '{}');
+                                        res.end(rawText);
                                         return [3 /*break*/, 6];
                                     case 5:
                                         err_1 = _f.sent();
@@ -127,7 +131,7 @@ function biaiDevApiPlugin(env) {
                             body_2 += chunk;
                         });
                         req.on('end', function () { return __awaiter(_this, void 0, void 0, function () {
-                            var parsed, currentEnv, n8nWebhook, n8nRes, data_1, errStatus, errBody, n8nErr_1, geminiKey, geminiModel, prompt_2, geminiRes, data, text, err_2;
+                            var parsed, currentEnv, n8nWebhook, n8nRes, data_1, isN8nFallback, errStatus, errBody, n8nErr_1, geminiKey, geminiModel, prompt_2, geminiRes, data, text, rawText, match, err_2;
                             var _a, _b, _c, _d, _e;
                             return __generator(this, function (_f) {
                                 switch (_f.label) {
@@ -155,10 +159,19 @@ function biaiDevApiPlugin(env) {
                                         return [4 /*yield*/, n8nRes.json()];
                                     case 3:
                                         data_1 = _f.sent();
-                                        console.log('[AI Middleware] ✅ Successfully processed via n8n!');
-                                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                                        res.end(JSON.stringify(data_1));
-                                        return [2 /*return*/];
+                                        isN8nFallback = (data_1.category === 'other' || !data_1.category) &&
+                                            (!data_1.key_details || data_1.key_details.length === 0) &&
+                                            data_1.intent === 'General inquiry';
+                                        if (!isN8nFallback) {
+                                            console.log('[AI Middleware] ✅ Successfully processed via n8n!');
+                                            res.writeHead(200, { 'Content-Type': 'application/json' });
+                                            res.end(JSON.stringify(data_1));
+                                            return [2 /*return*/];
+                                        }
+                                        else {
+                                            console.warn('[AI Middleware] ⚠️ n8n returned dummy fallback output. Falling back to direct Gemini.');
+                                        }
+                                        return [3 /*break*/, 6];
                                     case 4:
                                         errStatus = n8nRes.status;
                                         return [4 /*yield*/, n8nRes.text()];
@@ -173,7 +186,7 @@ function biaiDevApiPlugin(env) {
                                         return [3 /*break*/, 8];
                                     case 8:
                                         geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-                                        geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+                                        geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
                                         if (!geminiKey) {
                                             res.writeHead(503, { 'Content-Type': 'application/json' });
                                             res.end(JSON.stringify({ error: 'GEMINI_API_KEY not configured', fallback_required: true }));
@@ -193,9 +206,9 @@ function biaiDevApiPlugin(env) {
                                             })];
                                     case 9:
                                         geminiRes = _f.sent();
-                                        if (!(!geminiRes.ok && geminiModel !== 'gemini-3.5-flash-lite')) return [3 /*break*/, 11];
-                                        console.warn("[AI Middleware] ".concat(geminiModel, " returned ").concat(geminiRes.status, ". Retrying with gemini-3.5-flash-lite..."));
-                                        return [4 /*yield*/, fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=".concat(geminiKey), {
+                                        if (!(!geminiRes.ok && geminiModel !== 'gemini-flash-latest')) return [3 /*break*/, 11];
+                                        console.warn("[AI Middleware] ".concat(geminiModel, " returned ").concat(geminiRes.status, ". Retrying with gemini-flash-latest..."));
+                                        return [4 /*yield*/, fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=".concat(geminiKey), {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({
@@ -219,8 +232,12 @@ function biaiDevApiPlugin(env) {
                                     case 12:
                                         data = _f.sent();
                                         text = (_e = (_d = (_c = (_b = (_a = data.candidates) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.content) === null || _c === void 0 ? void 0 : _c.parts) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.text;
+                                        rawText = text || '{}';
+                                        match = rawText.match(/\{[\s\S]*\}/);
+                                        if (match)
+                                            rawText = match[0];
                                         res.writeHead(200, { 'Content-Type': 'application/json' });
-                                        res.end(text || '{}');
+                                        res.end(rawText);
                                         return [3 /*break*/, 14];
                                     case 13:
                                         err_2 = _f.sent();

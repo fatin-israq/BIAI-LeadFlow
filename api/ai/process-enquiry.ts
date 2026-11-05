@@ -188,7 +188,7 @@ Incoming Message:
 "${message}"
 `;
 
-      const geminiRes = await fetch(geminiEndpoint, {
+      let geminiRes = await fetch(geminiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -204,6 +204,29 @@ Incoming Message:
           },
         }),
       });
+
+      if (!geminiRes.ok && GEMINI_MODEL !== 'gemini-flash-latest') {
+        console.warn(`[Vercel API] ${GEMINI_MODEL} returned ${geminiRes.status}. Retrying with gemini-flash-latest...`);
+        geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [
+                {
+                  role: 'user',
+                  parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }],
+                },
+              ],
+              generationConfig: {
+                responseMimeType: 'application/json',
+                temperature: 0.2,
+              },
+            }),
+          }
+        );
+      }
 
       if (!geminiRes.ok) {
         const errorText = await geminiRes.text();
