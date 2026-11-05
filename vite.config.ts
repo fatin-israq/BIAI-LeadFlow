@@ -17,7 +17,7 @@ function biaiDevApiPlugin(env: Record<string, string>): Plugin {
               const parsed = JSON.parse(body || '{}');
               const currentEnv = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
               const geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
               if (!geminiKey) {
                 res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -77,10 +77,10 @@ Data for Analysis:
               );
 
               // If primary model is unavailable or 404, fallback to gemini-3.5-flash-lite
-              if (!geminiRes.ok && geminiModel !== 'gemini-3.5-flash-lite') {
-                console.warn(`[AI Middleware] ${geminiModel} returned ${geminiRes.status}. Retrying with gemini-3.5-flash-lite...`);
+              if (!geminiRes.ok && geminiModel !== 'gemini-flash-latest') {
+                console.warn(`[AI Middleware] ${geminiModel} returned ${geminiRes.status}. Retrying with gemini-flash-latest...`);
                 geminiRes = await fetch(
-                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiKey}`,
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
                   {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -103,8 +103,11 @@ Data for Analysis:
 
               const data = await geminiRes.json();
               const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              let rawText = text || '{}';
+              const match = rawText.match(/\{[\s\S]*\}/);
+              if (match) rawText = match[0];
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(text || '{}');
+              res.end(rawText);
             } catch (err: any) {
               res.writeHead(500, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: err.message || 'Internal dev server error' }));
@@ -141,10 +144,19 @@ Data for Analysis:
 
                   if (n8nRes.ok) {
                     const data = await n8nRes.json();
-                    console.log('[AI Middleware] ✅ Successfully processed via n8n!');
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify(data));
-                    return;
+                    const isN8nFallback =
+                      (data.category === 'other' || !data.category) &&
+                      (!data.key_details || data.key_details.length === 0) &&
+                      data.intent === 'General inquiry';
+
+                    if (!isN8nFallback) {
+                      console.log('[AI Middleware] ✅ Successfully processed via n8n!');
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify(data));
+                      return;
+                    } else {
+                      console.warn('[AI Middleware] ⚠️ n8n returned dummy fallback output. Falling back to direct Gemini.');
+                    }
                   } else {
                     const errStatus = n8nRes.status;
                     const errBody = await n8nRes.text();
@@ -157,7 +169,7 @@ Data for Analysis:
 
               // OPTION B: Direct Gemini API call
               const geminiKey = currentEnv.GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+              const geminiModel = currentEnv.GEMINI_MODEL || env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
               if (!geminiKey) {
                 res.writeHead(503, { 'Content-Type': 'application/json' });
@@ -194,10 +206,10 @@ Message: "${parsed.message || ''}"`;
                 }
               );
 
-              if (!geminiRes.ok && geminiModel !== 'gemini-3.5-flash-lite') {
-                console.warn(`[AI Middleware] ${geminiModel} returned ${geminiRes.status}. Retrying with gemini-3.5-flash-lite...`);
+              if (!geminiRes.ok && geminiModel !== 'gemini-flash-latest') {
+                console.warn(`[AI Middleware] ${geminiModel} returned ${geminiRes.status}. Retrying with gemini-flash-latest...`);
                 geminiRes = await fetch(
-                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${geminiKey}`,
+                  `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
                   {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -220,8 +232,11 @@ Message: "${parsed.message || ''}"`;
 
               const data = await geminiRes.json();
               const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              let rawText = text || '{}';
+              const match = rawText.match(/\{[\s\S]*\}/);
+              if (match) rawText = match[0];
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(text || '{}');
+              res.end(rawText);
             } catch (err: any) {
               res.writeHead(500, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: err.message || 'Internal dev server error' }));

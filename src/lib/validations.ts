@@ -1,8 +1,28 @@
 import { z } from 'zod';
 
-export const detectedLanguageSchema = z.enum(['bangla', 'banglish', 'english', 'mixed']);
+export const detectedLanguageSchema = z.preprocess((val) => {
+  if (typeof val !== 'string') return val;
+  const s = val.toLowerCase().trim();
+  if (s.includes('bangla') || s.includes('bengali') || s === 'bn') return 'bangla';
+  if (s.includes('banglish')) return 'banglish';
+  if (s.includes('mixed')) return 'mixed';
+  if (s.includes('english') || s === 'en') return 'english';
+  return s;
+}, z.enum(['bangla', 'banglish', 'english', 'mixed']));
 
-export const enquiryCategorySchema = z.enum([
+export const enquiryCategorySchema = z.preprocess((val) => {
+  if (typeof val !== 'string') return val;
+  const s = val.toLowerCase().trim().replace(/[-\s]+/g, '_');
+  if (s.includes('sales') || s.includes('admission') || s.includes('pricing') || s.includes('course_fee') || s.includes('enroll')) return 'sales_enquiry';
+  if (s.includes('programme') || s.includes('program') || s.includes('syllabus')) return 'programme_info';
+  if (s.includes('corporate') || s.includes('enterprise') || s.includes('b2b') || s.includes('company_training')) return 'corporate_training';
+  if (s.includes('payment') || s.includes('bkash') || s.includes('nagad') || s.includes('transaction')) return 'payment_support';
+  if (s.includes('refund') || s.includes('cancel')) return 'refund_cancellation';
+  if (s.includes('job') || s.includes('intern') || s.includes('career') || s.includes('resume') || s.includes('cv')) return 'job_application';
+  if (s.includes('spam') || s.includes('scam') || s.includes('crypto')) return 'spam';
+  if (s.includes('support') || s.includes('general')) return 'general_support';
+  return s;
+}, z.enum([
   'sales_enquiry',
   'programme_info',
   'corporate_training',
@@ -12,18 +32,32 @@ export const enquiryCategorySchema = z.enum([
   'job_application',
   'spam',
   'other',
-]);
+]));
 
-export const programmeInterestSchema = z.enum([
+export const programmeInterestSchema = z.preprocess((val) => {
+  if (typeof val !== 'string') return val;
+  const s = val.toLowerCase().trim().replace(/[-\s]+/g, '_');
+  if (s.includes('bootcamp')) return 'bootcamp';
+  if (s.includes('fellowship')) return 'fellowship';
+  if (s.includes('corporate')) return 'corporate_training';
+  if (s.includes('unknown') || s.includes('none') || s.includes('unspecified')) return 'unknown';
+  return s;
+}, z.enum([
   'bootcamp',
   'fellowship',
   'corporate_training',
   'unknown',
-]);
+]));
 
-export const priorityLevelSchema = z.enum(['low', 'medium', 'high']);
+export const priorityLevelSchema = z.preprocess((val) => {
+  if (typeof val === 'string') return val.toLowerCase().trim();
+  return val;
+}, z.enum(['low', 'medium', 'high']));
 
-export const sentimentTypeSchema = z.enum(['positive', 'neutral', 'negative']);
+export const sentimentTypeSchema = z.preprocess((val) => {
+  if (typeof val === 'string') return val.toLowerCase().trim();
+  return val;
+}, z.enum(['positive', 'neutral', 'negative']));
 
 export const sourceChannelSchema = z.enum([
   'WhatsApp',
@@ -43,8 +77,22 @@ export const aiExtractionSchema = z.object({
   priority: priorityLevelSchema.catch('medium'),
   sentiment: sentimentTypeSchema.catch('neutral'),
   confidence: z.number().min(0).max(1).catch(0.85),
-  key_details: z.array(z.string()).catch([]),
-  requested_follow_up: z.string().nullable().catch(null),
+  key_details: z
+    .preprocess((val) => {
+      if (Array.isArray(val)) return val.map((v) => (typeof v === 'string' ? v : JSON.stringify(v)));
+      if (val && typeof val === 'object') {
+        return Object.entries(val).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`);
+      }
+      if (typeof val === 'string') return [val];
+      return [];
+    }, z.array(z.string()))
+    .catch([]),
+  requested_follow_up: z
+    .preprocess((val) => {
+      if (typeof val === 'boolean') return val ? 'Follow-up requested' : null;
+      return val;
+    }, z.string().nullable())
+    .catch(null),
   requires_human_review: z.boolean().catch(false),
   review_reason: z.string().nullable().optional().catch(null),
   suggested_reply: z.string().min(1, 'Suggested reply is required'),
